@@ -1,0 +1,37 @@
+name: CI
+
+# Build and test on every push to main and every pull request targeting main.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # We target the test project specifically rather than the whole solution.
+      # The MAUI client (URFYSIO.App) targets Windows/Android workloads that don't
+      # build on ubuntu-latest. The test project only references Core / Infrastructure
+      # / API / Shared, so building it pulls in everything the 85 tests need — and
+      # nothing that requires MAUI. The tests use the EF Core in-memory provider, so
+      # no database, Auth0 credentials, or appsettings secrets are required.
+      - name: Restore dependencies
+        run: dotnet restore tests/URFYSIO.Tests/URFYSIO.Tests.csproj
+
+      - name: Build (Release)
+        run: dotnet build tests/URFYSIO.Tests/URFYSIO.Tests.csproj --no-restore --configuration Release
+
+      - name: Test (Release)
+        run: dotnet test tests/URFYSIO.Tests/URFYSIO.Tests.csproj --no-build --configuration Release --verbosity normal

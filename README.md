@@ -1,5 +1,7 @@
 # URFYSIO - Physiotherapy Practice Management
 
+[![CI](https://github.com/Manero88/URFYSIO/actions/workflows/ci.yml/badge.svg)](https://github.com/Manero88/URFYSIO/actions/workflows/ci.yml)
+
 URFYSIO is a comprehensive, cross-platform physiotherapy practice management system built with **.NET 10**.
 
 It comprises an ASP.NET Core 10 Web API backend and a .NET MAUI 10 frontend for Windows (and Android ready). The project uses a Clean Architecture approach with a deeply integrated Role-based Access Control (RBAC) system for Admins, Physiotherapists, and Clients.

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/URFYSIO.API/URFYSIO.API.csproj" />
+    <Project Path="src/URFYSIO.App/URFYSIO.App.csproj" />
+    <Project Path="src/URFYSIO.Core/URFYSIO.Core.csproj" />
+    <Project Path="src/URFYSIO.Infrastructure/URFYSIO.Infrastructure.csproj" />
+    <Project Path="src/URFYSIO.Shared/URFYSIO.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/URFYSIO.Tests/URFYSIO.Tests.csproj" />
+  </Folder>
+</Solution>

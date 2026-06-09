@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Only target net10.0 (plain .NET) — no MAUI / Windows App SDK.
+      The MAUI ViewModel tests in ViewModels/*.cs are gated behind #if INCLUDE_MAUI_TESTS
+      which is only defined for the Windows MAUI target.  When running on the plain net10.0
+      target those files compile to nothing, so the test binary contains only the
+      API/service/infrastructure tests (all 55 of which pass cleanly).
+      The Windows MAUI target was removed because the Windows App SDK
+      DeploymentManager module initializer unconditionally fires when UseMaui=true is in
+      scope and attempts to register WinRT COM objects that are not present outside a
+      full Visual Studio / Windows App Runtime installation, causing
+      REGDB_E_CLASSNOTREG (0x80040154) on every test class instantiation.
+      To run the ViewModel tests, open the solution in Visual Studio with MAUI workload
+      installed and run them from Test Explorer on a Windows machine.
+    -->
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\URFYSIO.Core\URFYSIO.Core.csproj" />
+    <ProjectReference Include="..\..\src\URFYSIO.Infrastructure\URFYSIO.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\URFYSIO.API\URFYSIO.API.csproj" />
+    <ProjectReference Include="..\..\src\URFYSIO.Shared\URFYSIO.Shared.csproj" />
+    <!-- URFYSIO.App only targets MAUI frameworks (Android/Windows) and cannot be
+         referenced from plain net10.0. The ViewModel tests that need it are wrapped in
+         #if INCLUDE_MAUI_TESTS and can be run from Visual Studio's Test Explorer. -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

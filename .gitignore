@@ -1,0 +1,92 @@
+## ──────────────────────────────────────────────────────────────
+## URFYSIO — .NET 10 / MAUI .gitignore
+## ──────────────────────────────────────────────────────────────
+
+## ===== Secrets / local configuration (NEVER COMMIT) =====
+# The real appsettings.json holds the SQL password and Auth0 management client
+# secret. Commit appsettings.example.json (placeholders) instead.
+appsettings.json
+appsettings.*.json
+!appsettings.example.json
+!appsettings.*.example.json
+
+# Other common secret stores
+*.env
+.env
+.env.*
+secrets.json
+**/secrets/
+
+## ===== Build output =====
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]uild/
+[Pp]ublish/
+publish/
+*.binlog
+
+## ===== Visual Studio / Rider / VS Code =====
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## ===== Publish profiles (contain Azure subscription / resource IDs) =====
+PublishProfiles/
+
+## ===== MAUI / Android / iOS artifacts =====
+*.apk
+*.aab
+*.ipa
+*.app
+# Android signing keys — never commit
+*.keystore
+*.jks
+# (the public debug keystore is regenerated automatically)
+
+## ===== Test results / coverage =====
+[Tt]est[Rr]esult*/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+## ===== NuGet =====
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+.nuget/
+
+## ===== Logs & misc =====
+*.log
+build.log
+*.tmp
+*.cache
+
+## ===== OS files =====
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+## ===== Local agent / tooling state =====
+.claude/

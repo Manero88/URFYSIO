@@ -182,13 +182,16 @@ public class RegistrationServiceTests
     }
 
     [Fact]
-    public async Task ApproveAsync_WhenAuth0UserAlreadyExists_ThrowsConflict()
+    public async Task ApproveAsync_Auth0ConflictAndLookupFails_ThrowsConflictAndStaysPending()
     {
         var (service, db, auth0) = CreateService();
         using (db)
         {
             auth0.Setup(a => a.CreateUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(Auth0UserResult.Conflict("An Auth0 account already exists for this email address."));
+            // Lookup can't resolve the existing identity either — only then do we fail.
+            auth0.Setup(a => a.GetUserIdByEmailAsync(It.IsAny<string>()))
+                .ReturnsAsync((string?)null);
 
             var request = new RegistrationRequest
             {
@@ -202,9 +205,97 @@ public class RegistrationServiceTests
             var ex = await Assert.ThrowsAsync<DomainException>(
                 () => service.ApproveAsync(request.Id, Guid.NewGuid()));
             Assert.Equal(409, ex.StatusCode);
+            Assert.Contains("already has an account", ex.Message);
 
             var reloaded = await db.RegistrationRequests.FindAsync(request.Id);
             Assert.Equal(RegistrationStatus.Pending, reloaded!.Status);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveAsync_Auth0Conflict_LinksExistingAuth0Account()
+    {
+        var (service, db, auth0) = CreateService();
+        using (db)
+        {
+            // Email already exists in Auth0 as a Google SSO identity (no local user yet).
+            const string existingAuth0Id = "google-oauth2|112233445566";
+            auth0.Setup(a => a.CreateUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(Auth0UserResult.Conflict("exists"));
+            auth0.Setup(a => a.GetUserIdByEmailAsync("googleuser@gmail.com"))
+                .ReturnsAsync(existingAuth0Id);
+
+            var request = new RegistrationRequest
+            {
+                Id = Guid.NewGuid(), FirstName = "Goo", LastName = "Gler",
+                Email = "googleuser@gmail.com", Status = RegistrationStatus.Pending,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.RegistrationRequests.Add(request);
+            await db.SaveChangesAsync();
+
+            var result = await service.ApproveAsync(request.Id, Guid.NewGuid());
+
+            Assert.Equal(RegistrationStatus.Approved, result.Status);
+
+            // A local user was created and LINKED to the existing Auth0 identity.
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Email == "googleuser@gmail.com");
+            Assert.NotNull(user);
+            Assert.Equal(existingAuth0Id, user!.Auth0Id);
+            Assert.True(user.IsActive);
+            Assert.Equal(UserRole.Client, user.Role);
+
+            auth0.Verify(a => a.AssignRoleAsync(existingAuth0Id, "Client"), Times.Once);
+            // No password-setup email for an SSO-only identity — there's no Auth0
+            // database password to (re)set; they log in with Google.
+            auth0.Verify(a => a.SendPasswordResetEmailAsync(It.IsAny<string>()), Times.Never);
+        }
+    }
+
+    [Fact]
+    public async Task ApproveAsync_Auth0Conflict_ActivatesExistingInactiveLocalUser()
+    {
+        var (service, db, auth0) = CreateService();
+        using (db)
+        {
+            // Scenario: the person logged in with Google BEFORE registering. The sync
+            // middleware auto-created an INACTIVE local user. Approving their
+            // registration must activate that row, not crash on the duplicate email.
+            const string existingAuth0Id = "google-oauth2|998877";
+            var existingLocal = new User
+            {
+                Id = Guid.NewGuid(), Auth0Id = existingAuth0Id,
+                Email = "earlybird@gmail.com", FirstName = "Unknown", LastName = "User",
+                PasswordHash = "", Role = UserRole.Client, IsActive = false
+            };
+            db.Users.Add(existingLocal);
+            await db.SaveChangesAsync();
+
+            auth0.Setup(a => a.CreateUserAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(Auth0UserResult.Conflict("exists"));
+            auth0.Setup(a => a.GetUserIdByEmailAsync("earlybird@gmail.com"))
+                .ReturnsAsync(existingAuth0Id);
+
+            var request = new RegistrationRequest
+            {
+                Id = Guid.NewGuid(), FirstName = "Early", LastName = "Bird",
+                Email = "earlybird@gmail.com", Status = RegistrationStatus.Pending,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.RegistrationRequests.Add(request);
+            await db.SaveChangesAsync();
+
+            var result = await service.ApproveAsync(request.Id, Guid.NewGuid());
+
+            Assert.Equal(RegistrationStatus.Approved, result.Status);
+
+            // Still exactly one user with this email, now active, with real names.
+            var users = await db.Users.Where(u => u.Email == "earlybird@gmail.com").ToListAsync();
+            Assert.Single(users);
+            Assert.True(users[0].IsActive);
+            Assert.Equal("Early", users[0].FirstName);
+            Assert.Equal("Bird", users[0].LastName);
+            Assert.Equal(existingAuth0Id, users[0].Auth0Id);
         }
     }
 

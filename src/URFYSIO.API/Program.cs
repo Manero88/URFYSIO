@@ -171,20 +171,20 @@ app.MapGet("/", () => Results.Ok("URFYSIO API is running"));
 app.MapGet("/health", () => Results.Ok("Healthy"));
 
 // Post-login landing page. The MAUI app opens this (Windows) after an Auth0 SSO/signup
-// flow. We try hard to NOT leave the user staring at a stray browser tab:
-//   1. Attempt window.close() immediately (works only if the tab was script-opened).
-//   2. If still visible shortly after, the browser blocked the close (OS-opened tabs
-//      can't be closed programmatically) — so deep-link back into the URFYSIO app via
-//      its custom scheme (myapp://callback), bringing the app to the foreground.
-//   3. Clean on-brand fallback message + a manual close button (a user-gesture close
-//      is allowed even when the programmatic one is blocked).
+// flow so the user gets a clean confirmation tab that closes itself.
+//
+// IMPORTANT — do NOT add a deep-link back to the app here. An earlier version
+// redirected to "myapp://callback" as a bring-the-app-forward fallback, but that
+// custom scheme IS the Auth0 OIDC redirect URI: navigating to it fires a Windows
+// protocol activation that the Auth0 client plumbing treats as an auth callback,
+// which re-opened the authorize screen after every successful login.
 app.MapGet("/auth-callback", () => Results.Content("""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>URFYSIO - Logged In</title>
+    <title>URFYSIO</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -196,55 +196,56 @@ app.MapGet("/auth-callback", () => Results.Content("""
             background: #1a1a2e;
             color: white;
         }
-        .container { text-align: center; padding: 40px; }
-        h1 { color: #7c3aed; font-size: 2em; margin: 0.2em 0; }
-        p { font-size: 1.1em; color: #ccc; margin: 16px 0; }
-        .icon { font-size: 4em; margin-bottom: 10px; }
+        .card {
+            text-align: center;
+            padding: 36px 48px;
+            background: #16213e;
+            border: 1px solid #7c3aed;
+            border-radius: 12px;
+        }
+        h1 { color: #7c3aed; font-size: 1.4em; margin: 0 0 8px 0; }
+        p { font-size: 0.95em; color: #b0b0b0; margin: 6px 0; }
+        .icon { font-size: 2.4em; }
         .btn {
-            margin-top: 24px;
-            padding: 14px 28px;
+            margin-top: 18px;
+            padding: 10px 22px;
             background: #7c3aed;
             border: none;
             border-radius: 8px;
             color: white;
-            font-size: 1em;
+            font-size: 0.95em;
             cursor: pointer;
         }
         .btn:hover { background: #6d28d9; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="card">
         <div class="icon">&#x2705;</div>
-        <h1>URFYSIO</h1>
-        <p>You're logged in. Returning you to the app&hellip;</p>
-        <p>You can close this window.</p>
+        <h1>Logged in</h1>
+        <p>You can return to the URFYSIO app.</p>
         <button class="btn" onclick="window.close()">Close window</button>
     </div>
     <script>
-        // 1. Immediate best-effort close.
+        // Close immediately; retry once in case the first attempt raced page load.
+        // No deep-link fallback — see the route comment above.
         window.close();
-        // 2. If the close was blocked, pull the app to the foreground via its custom
-        //    scheme, then try once more to close.
-        setTimeout(function () {
-            window.location.href = 'myapp://callback';
-            setTimeout(function () { window.close(); }, 400);
-        }, 600);
+        setTimeout(function () { window.close(); }, 300);
     </script>
 </body>
 </html>
 """, "text/html"));
 
-// Post-logout landing page. Same self-close strategy, but we deliberately do NOT
-// deep-link back into the app (the user just logged out — the app already navigates
-// itself to the login screen).
+// Post-logout landing page. Same instant self-close strategy; never deep-links
+// back into the app (the user just logged out, and myapp:// would re-fire the
+// OIDC protocol activation — see /auth-callback comment).
 app.MapGet("/auth-logout", () => Results.Content("""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>URFYSIO - Logged Out</title>
+    <title>URFYSIO</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -256,34 +257,39 @@ app.MapGet("/auth-logout", () => Results.Content("""
             background: #1a1a2e;
             color: white;
         }
-        .container { text-align: center; padding: 40px; }
-        h1 { color: #7c3aed; font-size: 2em; margin: 0.2em 0; }
-        p { font-size: 1.1em; color: #ccc; margin: 16px 0; }
-        .icon { font-size: 4em; margin-bottom: 10px; }
+        .card {
+            text-align: center;
+            padding: 36px 48px;
+            background: #16213e;
+            border: 1px solid #7c3aed;
+            border-radius: 12px;
+        }
+        h1 { color: #7c3aed; font-size: 1.4em; margin: 0 0 8px 0; }
+        p { font-size: 0.95em; color: #b0b0b0; margin: 6px 0; }
+        .icon { font-size: 2.4em; }
         .btn {
-            margin-top: 24px;
-            padding: 14px 28px;
+            margin-top: 18px;
+            padding: 10px 22px;
             background: #7c3aed;
             border: none;
             border-radius: 8px;
             color: white;
-            font-size: 1em;
+            font-size: 0.95em;
             cursor: pointer;
         }
         .btn:hover { background: #6d28d9; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="card">
         <div class="icon">&#x1F44B;</div>
-        <h1>URFYSIO</h1>
-        <p>You've been logged out.</p>
+        <h1>Logged out</h1>
         <p>You can close this window.</p>
         <button class="btn" onclick="window.close()">Close window</button>
     </div>
     <script>
         window.close();
-        setTimeout(function () { window.close(); }, 600);
+        setTimeout(function () { window.close(); }, 300);
     </script>
 </body>
 </html>

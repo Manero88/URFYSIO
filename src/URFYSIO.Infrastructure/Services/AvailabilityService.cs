@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using URFYSIO.Core.Common;
 using URFYSIO.Core.Entities;
-using URFYSIO.Core.Exceptions;
 using URFYSIO.Core.Interfaces;
 using URFYSIO.Infrastructure.Data;
 
@@ -51,13 +51,18 @@ public class AvailabilityService : IAvailabilityService
         return await query.OrderBy(s => s.StartTime).ToListAsync();
     }
 
-    public async Task<AvailabilitySlot> CreateAsync(AvailabilitySlot slot)
+    // Create/Update return ServiceResult instead of throwing DomainException for
+    // validation failures. An overlapping slot is a perfectly normal user mistake —
+    // throwing for it made Visual Studio break into the debugger on every routine
+    // attempt, even though the API handled it correctly. Exceptions stay reserved
+    // for genuinely unexpected situations.
+    public async Task<ServiceResult<AvailabilitySlot>> CreateAsync(AvailabilitySlot slot)
     {
         if (slot.StartTime >= slot.EndTime)
-            throw DomainException.Conflict("Start time must be before end time.");
+            return ServiceResult<AvailabilitySlot>.Fail("Start time must be before end time.");
 
         if (slot.StartTime < DateTime.UtcNow)
-            throw DomainException.Conflict("Cannot create slots in the past.");
+            return ServiceResult<AvailabilitySlot>.Fail("Cannot create slots in the past.");
 
         // Check for overlapping slots for the same physio
         var hasConflict = await _db.AvailabilitySlots.AnyAsync(s =>
@@ -66,7 +71,7 @@ public class AvailabilityService : IAvailabilityService
             s.EndTime > slot.StartTime);
 
         if (hasConflict)
-            throw DomainException.Conflict("This time slot overlaps with an existing availability slot.");
+            return ServiceResult<AvailabilitySlot>.Fail("This time slot overlaps with an existing availability slot.");
 
         slot.Id = Guid.NewGuid();
         slot.IsBooked = false;
@@ -74,28 +79,38 @@ public class AvailabilityService : IAvailabilityService
         _db.AvailabilitySlots.Add(slot);
         await _db.SaveChangesAsync();
 
-        return await GetByIdAsync(slot.Id) ?? slot;
+        return ServiceResult<AvailabilitySlot>.Ok(await GetByIdAsync(slot.Id) ?? slot);
     }
 
-    public async Task<AvailabilitySlot> UpdateAsync(AvailabilitySlot slot)
+    public async Task<ServiceResult<AvailabilitySlot>> UpdateAsync(AvailabilitySlot slot)
     {
         if (slot.IsBooked)
-            throw DomainException.Conflict("Cannot modify a booked availability slot.");
+            return ServiceResult<AvailabilitySlot>.Fail("Cannot modify a booked availability slot.");
 
         if (slot.StartTime >= slot.EndTime)
-            throw DomainException.Conflict("Start time must be before end time.");
+            return ServiceResult<AvailabilitySlot>.Fail("Start time must be before end time.");
+
+        // Overlap check for the new time window, excluding the slot being edited.
+        var hasConflict = await _db.AvailabilitySlots.AnyAsync(s =>
+            s.Id != slot.Id &&
+            s.PhysiotherapistProfileId == slot.PhysiotherapistProfileId &&
+            s.StartTime < slot.EndTime &&
+            s.EndTime > slot.StartTime);
+
+        if (hasConflict)
+            return ServiceResult<AvailabilitySlot>.Fail("This time slot overlaps with an existing availability slot.");
 
         _db.AvailabilitySlots.Update(slot);
         await _db.SaveChangesAsync();
-        return slot;
+        return ServiceResult<AvailabilitySlot>.Ok(slot);
     }
 
     public async Task<bool> DeleteAsync(Guid id)
     {
         var slot = await _db.AvailabilitySlots.FindAsync(id);
-        if (slot is null) return false;
-        if (slot.IsBooked)
-            throw DomainException.Conflict("Cannot delete a booked availability slot.");
+        // Booked slots are refused at the controller (clear 400 with message) before
+        // we get here; the IsBooked re-check below is a defensive backstop only.
+        if (slot is null || slot.IsBooked) return false;
 
         _db.AvailabilitySlots.Remove(slot);
         await _db.SaveChangesAsync();

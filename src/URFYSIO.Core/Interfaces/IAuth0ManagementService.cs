@@ -40,6 +40,17 @@ public interface IAuth0ManagementService
     Task<bool> DeleteUserAsync(string auth0UserId);
 
     /// <summary>
+    /// Looks up an existing Auth0 user by email and returns their user_id, or null if
+    /// none exists / the lookup fails. When the same email has multiple identities
+    /// (e.g. a Google SSO login AND a database account), the database ("auth0|")
+    /// identity is preferred because password-reset emails only work for that
+    /// connection. Used by registration approval to LINK an already-existing Auth0
+    /// account (e.g. someone who previously signed in with Google) instead of failing
+    /// with a duplicate-email conflict.
+    /// </summary>
+    Task<string?> GetUserIdByEmailAsync(string email);
+
+    /// <summary>
     /// Looks up a user by Auth0 ID and returns the email Auth0 has on file. Returns
     /// <c>null</c> if the user doesn't exist or the Management API call fails.
     /// Used by the user-sync middleware to backfill the local <c>User.Email</c>

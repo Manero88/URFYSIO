@@ -198,6 +198,53 @@ public class Auth0ManagementService : IAuth0ManagementService
         return new string(chars);
     }
 
+    public async Task<string?> GetUserIdByEmailAsync(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return null;
+
+        var token = await GetManagementTokenAsync();
+        if (token is null)
+        {
+            _logger.LogError("GetUserIdByEmailAsync: management token unavailable for {Email}.", email);
+            return null;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // Auth0 stores emails lowercased; the endpoint matches exactly.
+            var url = $"{_domain}/api/v2/users-by-email?email={Uri.EscapeDataString(email.ToLowerInvariant())}";
+            var response = await client.GetAsync(url);
+            var raw = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Auth0 users-by-email for {Email} failed: {Status} {Body}. " +
+                    "Does the Management API client have the 'read:users' scope?",
+                    email, response.StatusCode, raw);
+                return null;
+            }
+
+            var users = JsonSerializer.Deserialize<List<CreateUserResponse>>(raw);
+            if (users is null || users.Count == 0) return null;
+
+            // Prefer the database identity (password reset works for it); otherwise
+            // take whatever identity exists (e.g. google-oauth2|...).
+            var match = users.FirstOrDefault(u => u.UserId?.StartsWith("auth0|") == true)
+                     ?? users.FirstOrDefault(u => !string.IsNullOrEmpty(u.UserId));
+            _logger.LogInformation("Auth0 users-by-email for {Email}: {Count} identit(y/ies), using '{UserId}'.",
+                email, users.Count, match?.UserId ?? "(none)");
+            return match?.UserId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetUserIdByEmailAsync failed for {Email}", email);
+            return null;
+        }
+    }
+
     public async Task<bool> DeleteUserAsync(string auth0UserId)
     {
         if (string.IsNullOrWhiteSpace(auth0UserId)) return false;

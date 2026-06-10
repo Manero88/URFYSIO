@@ -65,50 +65,110 @@ public class RegistrationService : IRegistrationService
         if (request.Status != RegistrationStatus.Pending)
             throw DomainException.Conflict("This request has already been processed.");
 
-        // Step 1: create the Auth0 account FIRST. Login goes through Auth0, so without
-        // an Auth0 user the approved person could never sign in. We do this before
+        // Step 1: ensure an Auth0 account exists for this email — create one, or LINK
+        // the one that's already there. Login goes through Auth0, so without an Auth0
+        // identity the approved person could never sign in. We resolve this BEFORE
         // touching the DB so that if Auth0 fails we abort cleanly with nothing changed
-        // (transactional integrity — the request stays Pending and the admin sees why).
+        // (the request stays Pending and the admin sees why).
         var auth0Result = await _auth0.CreateUserAsync(request.Email, request.FirstName, request.LastName);
-        if (!auth0Result.Success)
+
+        string auth0Id;
+        bool createdNewAuth0User;
+        if (auth0Result.Success)
         {
-            if (auth0Result.AlreadyExists)
-                throw DomainException.Conflict(auth0Result.Error ?? "An Auth0 account already exists for this email.");
+            auth0Id = auth0Result.UserId!;
+            createdNewAuth0User = true;
+        }
+        else if (auth0Result.AlreadyExists)
+        {
+            // The email already has an Auth0 identity — typically someone who
+            // previously signed in with "Continue with Google" using the same Gmail.
+            // Instead of failing the approval, look the identity up and link it.
+            var existingId = await _auth0.GetUserIdByEmailAsync(request.Email);
+            if (existingId is null)
+                throw DomainException.Conflict(
+                    "This email already has an account in the system (the user may have previously " +
+                    "logged in with Google using this email), but it could not be retrieved from Auth0. " +
+                    "Check the Auth0 dashboard for this email and try again.");
+
+            auth0Id = existingId;
+            createdNewAuth0User = false;
+            _logger.LogInformation(
+                "Approval: linking existing Auth0 account {Auth0Id} for {Email} instead of creating a new one.",
+                auth0Id, request.Email);
+        }
+        else
+        {
             // 502: the failure is upstream (Auth0), not the admin's request.
             throw new DomainException(
                 auth0Result.Error ?? "Could not create the Auth0 account. Please try again.", 502);
         }
 
-        var auth0Id = auth0Result.UserId!;
-
-        // Step 2: now safe to mark approved and create the local mirror record.
+        // Step 2: mark approved and ensure a local user exists and is ACTIVE.
         request.Status = RegistrationStatus.Approved;
         request.ProcessedByUserId = processedByUserId;
 
-        // Auth0Id is set so Auth0UserSyncMiddleware matches this row by sub on the
-        // user's first login (GetByAuth0IdAsync) and does NOT create a duplicate.
-        // No password is stored locally — Auth0 owns the credential; PasswordHash
-        // stays empty (CreateAsync skips hashing when the password is empty).
-        var user = new User
-        {
-            Auth0Id = auth0Id,
-            Email = request.Email,
-            FirstName = request.FirstName,
-            LastName = request.LastName,
-            PhoneNumber = request.PhoneNumber,
-            Role = UserRole.Client,
-            IsActive = true
-        };
-        await _userService.CreateAsync(user, string.Empty);
+        // When linking an existing Auth0 identity, a local row may already exist:
+        // Auth0UserSyncMiddleware auto-creates an INACTIVE user the first time someone
+        // logs in without a local record (e.g. their earlier Google login). Approving
+        // the registration is exactly the admin action that should activate that row —
+        // creating a second user would just blow up on the unique-email constraint.
+        var localUser = await _userService.GetByAuth0IdAsync(auth0Id)
+                     ?? await _userService.GetByEmailAsync(request.Email);
 
-        // Step 3: best-effort post-creation steps. A failure here shouldn't roll back
-        // the approval — the account exists and is usable; these are recoverable by
-        // the admin (re-trigger reset) or a re-login (role claim). Log and continue.
+        if (localUser is not null)
+        {
+            localUser.Auth0Id ??= auth0Id;
+            localUser.IsActive = true;
+            // The registrant gave their real name on the form — better than the
+            // "Unknown User" placeholder the middleware may have seeded.
+            localUser.FirstName = request.FirstName;
+            localUser.LastName = request.LastName;
+            localUser.PhoneNumber ??= request.PhoneNumber;
+            // Role is deliberately left as-is: auto-created rows default to Client,
+            // and we must not downgrade an existing physio/admin. UpdateAsync also
+            // ensures the role-matching profile (ClientProfile) exists.
+            await _userService.UpdateAsync(localUser);
+        }
+        else
+        {
+            // Fresh local mirror record. Auth0Id is set so Auth0UserSyncMiddleware
+            // matches this row by sub on first login and does NOT create a duplicate.
+            // No password stored locally — Auth0 owns the credential.
+            var user = new User
+            {
+                Auth0Id = auth0Id,
+                Email = request.Email,
+                FirstName = request.FirstName,
+                LastName = request.LastName,
+                PhoneNumber = request.PhoneNumber,
+                Role = UserRole.Client,
+                IsActive = true
+            };
+            await _userService.CreateAsync(user, string.Empty);
+        }
+
+        // Step 3: best-effort post-steps. A failure here shouldn't roll back the
+        // approval — the account exists and is usable; these are recoverable by the
+        // admin (re-trigger reset) or a re-login (role claim). Log and continue.
         if (!await _auth0.AssignRoleAsync(auth0Id, "Client"))
             _logger.LogWarning("Approval: failed to assign Client role to {Auth0Id} ({Email}).", auth0Id, request.Email);
 
-        if (!await _auth0.SendPasswordResetEmailAsync(request.Email))
-            _logger.LogWarning("Approval: failed to send password-setup email to {Email}.", request.Email);
+        // Password-setup email only applies to database ("auth0|") identities. A
+        // linked Google-only account has no Auth0 password — they keep logging in
+        // with Google, and the /dbconnections/change_password call would be a no-op
+        // or a confusing email.
+        if (auth0Id.StartsWith("auth0|", StringComparison.Ordinal))
+        {
+            if (!await _auth0.SendPasswordResetEmailAsync(request.Email))
+                _logger.LogWarning("Approval: failed to send password-setup email to {Email}.", request.Email);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Approval: {Email} is linked to SSO identity {Auth0Id}; no password-setup email needed (they log in via their provider). " +
+                "CreatedNewAuth0User={CreatedNew}", request.Email, auth0Id, createdNewAuth0User);
+        }
 
         await _db.SaveChangesAsync();
         return request;

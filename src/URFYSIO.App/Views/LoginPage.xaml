@@ -10,10 +10,11 @@
         <VerticalStackLayout Spacing="15" Padding="30"
                              VerticalOptions="Center" MaximumWidthRequest="400">
 
-            <Label Text="URFYSIO" FontSize="36" FontAttributes="Bold"
-                   HorizontalOptions="Center" TextColor="{StaticResource Primary}" />
-            <Label Text="Physiotherapy Practice" FontSize="14"
-                   HorizontalOptions="Center" TextColor="{StaticResource TextSecondary}" />
+            <Image Source="urfysio_logo.png"
+                   HeightRequest="80"
+                   Aspect="AspectFit"
+                   HorizontalOptions="Center"
+                   Margin="0,40,0,30" />
 
             <BoxView HeightRequest="1" Color="{StaticResource Gray200}" Margin="0,10" />
 

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             x:Class="URFYSIO.App.Views.ProfilePage"
+             x:DataType="vm:ProfileViewModel"
+             Title="{Binding Title}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Logout"
+                     Command="{Binding LogoutCommand, Source={x:Static vm:AppShellViewModel.Instance}}" />
+    </ContentPage.ToolbarItems>
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="12" Padding="20">
+
+            <Label Text="My Profile" FontSize="24" FontAttributes="Bold" />
+
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+            <Label Text="{Binding SuccessMessage}"
+                   TextColor="{StaticResource Success}"
+                   FontSize="14"
+                   IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                   Margin="0,5" />
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+
+            <!-- Read-only info card -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="{Binding Email}" FontSize="14" TextColor="{StaticResource TextSecondary}" />
+                    <HorizontalStackLayout Spacing="10">
+                        <Border Padding="8,4" StrokeShape="RoundRectangle 4"
+                                BackgroundColor="{StaticResource Primary}" Stroke="{x:Null}">
+                            <Label Text="{Binding Role}" FontSize="11" TextColor="White" />
+                        </Border>
+                        <Border Padding="8,4" StrokeShape="RoundRectangle 4"
+                                BackgroundColor="{StaticResource Info}" Stroke="{x:Null}">
+                            <Label Text="{Binding AuthProvider}" FontSize="11" TextColor="White" />
+                        </Border>
+                    </HorizontalStackLayout>
+                    <Label Text="{Binding MemberSince, StringFormat='Member since {0}'}"
+                           FontSize="12" TextColor="{StaticResource TextMuted}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Edit / View toggle buttons -->
+            <HorizontalStackLayout Spacing="10" IsVisible="{Binding IsEditing, Converter={StaticResource InvertedBoolConverter}}">
+                <Button Text="Edit Profile" Command="{Binding StartEditingCommand}" />
+            </HorizontalStackLayout>
+            <HorizontalStackLayout Spacing="10" IsVisible="{Binding IsEditing}">
+                <Button Text="Save" Command="{Binding SaveProfileCommand}" />
+                <Button Text="Cancel" Command="{Binding CancelEditingCommand}"
+                        BackgroundColor="{StaticResource Gray300}" TextColor="{StaticResource TextPrimary}" />
+            </HorizontalStackLayout>
+
+            <!-- Profile form -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Personal Information" FontSize="16" FontAttributes="Bold" />
+
+                    <Label Text="First Name" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Text="{Binding FirstName}" IsEnabled="{Binding IsEditing}" Placeholder="First name" />
+
+                    <Label Text="Last Name" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Text="{Binding LastName}" IsEnabled="{Binding IsEditing}" Placeholder="Last name" />
+
+                    <Label Text="Phone Number" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Text="{Binding PhoneNumber}" IsEnabled="{Binding IsEditing}"
+                           Placeholder="Phone number" Keyboard="Telephone" />
+
+                    <Label Text="Gender" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Picker Title="Select gender"
+                            ItemsSource="{Binding GenderOptions}"
+                            SelectedItem="{Binding Gender}"
+                            IsEnabled="{Binding IsEditing}" />
+
+                    <Label Text="Date of Birth" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <HorizontalStackLayout Spacing="10">
+                        <CheckBox IsChecked="{Binding HasDateOfBirth}" IsEnabled="{Binding IsEditing}" />
+                        <DatePicker Date="{Binding DatePickerDate}" IsEnabled="{Binding IsEditing}"
+                                    IsVisible="{Binding HasDateOfBirth}" />
+                        <Label Text="Not set" VerticalOptions="Center" FontSize="13"
+                               TextColor="{StaticResource TextMuted}"
+                               IsVisible="{Binding HasDateOfBirth, Converter={StaticResource InvertedBoolConverter}}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Address card -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Address" FontSize="16" FontAttributes="Bold" />
+
+                    <Label Text="Street" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Text="{Binding Street}" IsEnabled="{Binding IsEditing}" Placeholder="Street" />
+
+                    <Label Text="House Number" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Text="{Binding HouseNumber}" IsEnabled="{Binding IsEditing}" Placeholder="House number" />
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" Spacing="4">
+                            <Label Text="Postal Code" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                            <Entry Text="{Binding PostalCode}" IsEnabled="{Binding IsEditing}" Placeholder="Postal code" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="4">
+                            <Label Text="City" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                            <Entry Text="{Binding City}" IsEnabled="{Binding IsEditing}" Placeholder="City" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Change Password card (only for email/password users) -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8" IsVisible="{Binding IsEmailPasswordUser}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Change Password" FontSize="16" FontAttributes="Bold" />
+
+                    <Label Text="{Binding PasswordErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                           IsVisible="{Binding PasswordErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+                    <Label Text="{Binding PasswordSuccessMessage}" TextColor="{StaticResource Success}" FontSize="12"
+                           IsVisible="{Binding PasswordSuccessMessage, Converter={StaticResource IsNotNullConverter}}" />
+
+                    <Label Text="New Password" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Text="{Binding NewPassword}" IsPassword="True" Placeholder="At least 8 characters" />
+
+                    <Label Text="Confirm Password" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Text="{Binding ConfirmPassword}" IsPassword="True" Placeholder="Repeat new password" />
+
+                    <Button Text="Change Password" Command="{Binding ChangePasswordCommand}" Margin="0,10,0,0" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

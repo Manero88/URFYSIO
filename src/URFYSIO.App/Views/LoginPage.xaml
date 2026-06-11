@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             x:Class="URFYSIO.App.Views.LoginPage"
+             x:DataType="vm:LoginViewModel"
+             Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="15" Padding="30"
+                             VerticalOptions="Center" MaximumWidthRequest="400">
+
+            <Label Text="URFYSIO" FontSize="36" FontAttributes="Bold"
+                   HorizontalOptions="Center" TextColor="{StaticResource Primary}" />
+            <Label Text="Physiotherapy Practice" FontSize="14"
+                   HorizontalOptions="Center" TextColor="{StaticResource TextSecondary}" />
+
+            <BoxView HeightRequest="1" Color="{StaticResource Gray200}" Margin="0,10" />
+
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+            <Label Text="{Binding SuccessMessage}"
+                   TextColor="{StaticResource Success}"
+                   FontSize="14"
+                   IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                   Margin="0,5" />
+
+            <!-- Email / Password form. Enter on email focuses password (ReturnType="Next");
+                 Enter on password fires LoginCommand directly via ReturnCommand. The
+                 ReturnCommand binding also gives us hardware-keyboard support on Windows
+                 for free, no code-behind needed. -->
+            <Label Text="Email" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+            <Entry x:Name="EmailEntry"
+                   Text="{Binding Email}" Placeholder="you@example.com" Keyboard="Email"
+                   ReturnType="Next"
+                   Completed="OnEmailEntryCompleted"
+                   IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+            <Label Text="Password" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+            <Entry x:Name="PasswordEntry"
+                   Text="{Binding Password}" Placeholder="Password" IsPassword="True"
+                   ReturnType="Done"
+                   ReturnCommand="{Binding LoginCommand}"
+                   IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+            <Button Text="Login" Command="{Binding LoginCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                    HeightRequest="48" Margin="0,5,0,0" />
+
+            <!-- OR separator -->
+            <Grid ColumnDefinitions="*,Auto,*" Margin="0,10">
+                <BoxView Grid.Column="0" HeightRequest="1" Color="{StaticResource Gray200}" VerticalOptions="Center" />
+                <Label Grid.Column="1" Text="OR" FontSize="12" Padding="12,0"
+                       TextColor="{StaticResource TextMuted}" VerticalOptions="Center" />
+                <BoxView Grid.Column="2" HeightRequest="1" Color="{StaticResource Gray200}" VerticalOptions="Center" />
+            </Grid>
+
+            <!-- Social login -->
+            <Button Text="Continue with Google" Command="{Binding LoginWithGoogleCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                    BackgroundColor="{StaticResource SurfaceBackground}" TextColor="{StaticResource TextPrimary}"
+                    HeightRequest="48" />
+
+            <Button Text="Continue with Microsoft" Command="{Binding LoginWithMicrosoftCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                    BackgroundColor="{StaticResource SurfaceBackground}" TextColor="{StaticResource TextPrimary}"
+                    HeightRequest="48" />
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}"
+                               HorizontalOptions="Center" />
+
+            <Button Text="New patient? Register here" Command="{Binding GoToRegisterCommand}"
+                    BackgroundColor="Transparent" TextColor="{StaticResource Primary}"
+                    FontSize="13" Margin="0,10,0,0" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

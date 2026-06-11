@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             x:Class="URFYSIO.App.Views.AdminDashboardPage"
+             x:DataType="vm:AdminDashboardViewModel"
+             Title="{Binding Title}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Logout"
+                     Command="{Binding LogoutCommand, Source={x:Static vm:AppShellViewModel.Instance}}" />
+    </ContentPage.ToolbarItems>
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="15" Padding="20">
+
+            <Label Text="Admin Overview" FontSize="24" FontAttributes="Bold" />
+
+            <!-- Stats -->
+            <HorizontalStackLayout Spacing="15">
+                <Border Padding="15" StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Primary}" Stroke="{x:Null}" MinimumWidthRequest="100">
+                    <VerticalStackLayout HorizontalOptions="Center">
+                        <Label Text="Users" TextColor="White" />
+                        <Label Text="{Binding TotalUsers}" TextColor="White" FontSize="24" FontAttributes="Bold" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+                <Border Padding="15" StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Info}" Stroke="{x:Null}" MinimumWidthRequest="100">
+                    <VerticalStackLayout HorizontalOptions="Center">
+                        <Label Text="Appts" TextColor="White" />
+                        <Label Text="{Binding TotalAppointments}" TextColor="White" FontSize="24" FontAttributes="Bold" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+                <Border Padding="15" StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Warning}" Stroke="{x:Null}" MinimumWidthRequest="100">
+                    <VerticalStackLayout HorizontalOptions="Center">
+                        <Label Text="Requests" TextColor="White" />
+                        <Label Text="{Binding PendingRequests.Count}" TextColor="White" FontSize="24" FontAttributes="Bold" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+            </HorizontalStackLayout>
+
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+            <Label Text="{Binding SuccessMessage}"
+                   TextColor="{StaticResource Success}"
+                   FontSize="14"
+                   IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                   Margin="0,5" />
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+
+            <!-- Pending Registrations -->
+            <Label Text="Pending Registrations" FontSize="18" FontAttributes="Bold" Margin="0,10,0,0" />
+            <CollectionView ItemsSource="{Binding PendingRequests}" EmptyView="No pending registrations.">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="x:Object">
+                        <Border Margin="0,4" Padding="12" StrokeShape="RoundRectangle 8">
+                            <VerticalStackLayout Spacing="5">
+                                <Label Text="{Binding FirstName, StringFormat='{0} (Client)'}" FontAttributes="Bold" />
+                                <Label Text="{Binding Email}" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                                <Label Text="{Binding Message}" FontSize="12" FontAttributes="Italic" TextColor="{StaticResource TextMuted}" />
+
+                                <HorizontalStackLayout Spacing="10" Margin="0,5,0,0">
+                                    <Button Text="Approve" BackgroundColor="{StaticResource Success}" TextColor="White" Padding="10,0" HeightRequest="30" FontSize="12"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminDashboardViewModel}}, Path=ApproveRegistrationCommand}"
+                                            CommandParameter="{Binding .}" />
+                                    <Button Text="Reject" BackgroundColor="{StaticResource Error}" TextColor="White" Padding="10,0" HeightRequest="30" FontSize="12"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminDashboardViewModel}}, Path=RejectRegistrationCommand}"
+                                            CommandParameter="{Binding .}" />
+                                </HorizontalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Users list -->
+            <Label Text="All Users" FontSize="18" FontAttributes="Bold" Margin="0,10,0,0" />
+            <CollectionView ItemsSource="{Binding Users}">
+                <CollectionView.EmptyView>
+                    <ContentView>
+                        <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Padding="20">
+                            <Label Text="No users found."
+                                   HorizontalOptions="Center"
+                                   FontSize="16"
+                                   TextColor="{StaticResource TextMuted}" />
+                        </VerticalStackLayout>
+                    </ContentView>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="x:Object">
+                        <Border Margin="0,4" Padding="12" StrokeShape="RoundRectangle 8"
+                                Opacity="{Binding IsActive, Converter={StaticResource BoolToOpacityConverter}}">
+                            <VerticalStackLayout Spacing="4">
+                                <!-- Name + role badge row -->
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Grid.Column="0" FontAttributes="Bold"
+                                           TextDecorations="{Binding IsActive, Converter={StaticResource IsActiveToTextDecorationConverter}}">
+                                        <Label.FormattedText>
+                                            <FormattedString>
+                                                <Span Text="{Binding FirstName}" />
+                                                <Span Text=" " />
+                                                <Span Text="{Binding LastName}" />
+                                            </FormattedString>
+                                        </Label.FormattedText>
+                                    </Label>
+                                    <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                                        <Border Padding="6,2" StrokeShape="RoundRectangle 4"
+                                                BackgroundColor="{StaticResource Primary}" Stroke="{x:Null}">
+                                            <Label Text="{Binding Role}" FontSize="11" TextColor="White" />
+                                        </Border>
+                                        <Border Padding="6,2" StrokeShape="RoundRectangle 4"
+                                                BackgroundColor="{StaticResource Error}" Stroke="{x:Null}"
+                                                IsVisible="{Binding IsActive, Converter={StaticResource InvertedBoolConverter}}">
+                                            <Label Text="Inactive" FontSize="11" TextColor="White" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+                                </Grid>
+
+                                <!-- Details row -->
+                                <Label Text="{Binding Email}" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                                <Label FontSize="11" TextColor="{StaticResource TextMuted}">
+                                    <Label.FormattedText>
+                                        <FormattedString>
+                                            <Span Text="Registered: " />
+                                            <Span Text="{Binding CreatedAt, StringFormat='{0:dd/MM/yyyy}'}" />
+                                            <Span Text="  |  Profile: " />
+                                            <Span Text="{Binding ProfileId, StringFormat='{0}'}" />
+                                        </FormattedString>
+                                    </Label.FormattedText>
+                                </Label>
+
+                                <!-- Action buttons -->
+                                <HorizontalStackLayout Spacing="8" Margin="0,4,0,0">
+                                    <Button Text="Change Role" FontSize="12" Padding="10,0" HeightRequest="30"
+                                            BackgroundColor="{StaticResource Info}" TextColor="White"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminDashboardViewModel}}, Path=ChangeRoleCommand}"
+                                            CommandParameter="{Binding .}" />
+                                    <Button Text="Reset Password" FontSize="12" Padding="10,0" HeightRequest="30"
+                                            BackgroundColor="{StaticResource Warning}" TextColor="White"
+                                            IsVisible="{Binding IsEmailPasswordUser}"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminDashboardViewModel}}, Path=ResetPasswordCommand}"
+                                            CommandParameter="{Binding .}" />
+                                    <Button Text="Deactivate" FontSize="12" Padding="10,0" HeightRequest="30"
+                                            BackgroundColor="{StaticResource Error}" TextColor="White"
+                                            IsVisible="{Binding IsActive}"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminDashboardViewModel}}, Path=DeactivateUserCommand}"
+                                            CommandParameter="{Binding .}" />
+                                    <!-- Permanent delete (GDPR). Deliberately darker than Deactivate and
+                                         prefixed with a trash glyph so it can't be confused with the
+                                         reversible Deactivate action. Always available (active or not). -->
+                                    <Button Text="🗑 Delete" FontSize="12" Padding="10,0" HeightRequest="30"
+                                            BackgroundColor="{StaticResource DangerBackground}" TextColor="White"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminDashboardViewModel}}, Path=DeleteUserCommand}"
+                                            CommandParameter="{Binding .}" />
+                                </HorizontalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

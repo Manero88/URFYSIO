@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             x:Class="URFYSIO.App.Views.RegistrationPage"
+             x:DataType="vm:RegistrationViewModel"
+             Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="15" Padding="30" VerticalOptions="Center" MaximumWidthRequest="400">
+
+            <Label Text="Register" FontSize="28" FontAttributes="Bold"
+                   HorizontalOptions="Center" TextColor="{StaticResource Primary}" />
+            <Label Text="Create a patient account" FontSize="13"
+                   HorizontalOptions="Center" TextColor="{StaticResource TextSecondary}" />
+
+            <!-- Success state -->
+            <VerticalStackLayout IsVisible="{Binding IsSubmitted}" Spacing="10">
+                <Label Text="Registration submitted!" FontSize="18"
+                       TextColor="{StaticResource Success}" HorizontalOptions="Center" FontAttributes="Bold" />
+                <Label Text="Your registration request has been sent. An administrator will review it and create your account. You will receive your login details once approved."
+                       FontSize="13" HorizontalTextAlignment="Center" TextColor="{StaticResource TextSecondary}" />
+                <Button Text="Back to login" Command="{Binding BackToLoginCommand}"
+                        CornerRadius="8" Margin="0,10,0,0" />
+            </VerticalStackLayout>
+
+            <!-- Sign-up form -->
+            <VerticalStackLayout IsVisible="{Binding IsSubmitted, Converter={StaticResource InvertedBoolConverter}}" Spacing="12">
+
+                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                       IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+                <Label Text="{Binding SuccessMessage}"
+                       TextColor="{StaticResource Success}"
+                       FontSize="14"
+                       IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                       Margin="0,5" />
+
+                <Label Text="First name" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                <Entry Text="{Binding FirstName}" Placeholder="Your first name"
+                       IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <Label Text="Last name" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                <Entry Text="{Binding LastName}" Placeholder="Your last name"
+                       IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <Label Text="Email" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                <Entry Text="{Binding Email}" Placeholder="you@example.com" Keyboard="Email"
+                       IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <Label Text="Phone number (optional)" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                <Entry Text="{Binding PhoneNumber}" Placeholder="06 12345678" Keyboard="Telephone"
+                       IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <Label Text="Message (optional)" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                <Editor Text="{Binding Message}" Placeholder="Tell us briefly why you'd like an account"
+                        HeightRequest="80" AutoSize="TextChanges"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+                <Button Text="Submit registration" Command="{Binding SignUpCommand}"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                        HeightRequest="48" />
+
+                <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+
+                <Button Text="Back to login" Command="{Binding BackToLoginCommand}"
+                        BackgroundColor="Transparent" TextColor="{StaticResource Primary}" FontSize="13" />
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:views="clr-namespace:URFYSIO.App.Views"
+       x:Class="URFYSIO.App.AppShell"
+       Title="URFYSIO"
+       Shell.FlyoutBehavior="Disabled">
+
+    <!-- Login (no tabs) -->
+    <ShellContent Route="login" ContentTemplate="{DataTemplate views:LoginPage}" Shell.TabBarIsVisible="False" />
+
+    <!-- Registration (no tabs) -->
+    <ShellContent Route="register" ContentTemplate="{DataTemplate views:RegistrationPage}" Shell.TabBarIsVisible="False" />
+
+    <!-- Client tabs: Dashboard, Appointments, Plans, Profile (NO Availability) -->
+    <TabBar Route="client">
+        <ShellContent Route="dashboard" Title="Dashboard" Icon="tab_home.png"
+                      ContentTemplate="{DataTemplate views:DashboardPage}" />
+        <ShellContent Route="appointments" Title="Appointments" Icon="tab_calendar.png"
+                      ContentTemplate="{DataTemplate views:AppointmentsPage}" />
+        <ShellContent Route="treatmentplans" Title="Plans" Icon="tab_plans.png"
+                      ContentTemplate="{DataTemplate views:TreatmentPlanPage}" />
+        <ShellContent Route="profile" Title="Profile" Icon="tab_profile.png"
+                      ContentTemplate="{DataTemplate views:ProfilePage}" />
+    </TabBar>
+
+    <!-- Physiotherapist tabs: Dashboard, Appointments, Availability, Plans, Profile -->
+    <TabBar Route="physio">
+        <ShellContent Route="dashboard" Title="Dashboard" Icon="tab_home.png"
+                      ContentTemplate="{DataTemplate views:DashboardPage}" />
+        <ShellContent Route="appointments" Title="Appointments" Icon="tab_calendar.png"
+                      ContentTemplate="{DataTemplate views:AppointmentsPage}" />
+        <ShellContent Route="availability" Title="Availability" Icon="tab_clock.png"
+                      ContentTemplate="{DataTemplate views:AvailabilityPage}" />
+        <ShellContent Route="treatmentplans" Title="Plans" Icon="tab_plans.png"
+                      ContentTemplate="{DataTemplate views:TreatmentPlanPage}" />
+        <ShellContent Route="profile" Title="Profile" Icon="tab_profile.png"
+                      ContentTemplate="{DataTemplate views:ProfilePage}" />
+    </TabBar>
+
+    <!-- Admin tabs: Admin Dashboard, Appointments, Availability, Plans, Profile -->
+    <TabBar Route="admin">
+        <ShellContent Route="admindashboard" Title="Admin" Icon="tab_admin.png"
+                      ContentTemplate="{DataTemplate views:AdminDashboardPage}" />
+        <ShellContent Route="appointments" Title="Appointments" Icon="tab_calendar.png"
+                      ContentTemplate="{DataTemplate views:AppointmentsPage}" />
+        <ShellContent Route="availability" Title="Availability" Icon="tab_clock.png"
+                      ContentTemplate="{DataTemplate views:AvailabilityPage}" />
+        <ShellContent Route="treatmentplans" Title="Plans" Icon="tab_plans.png"
+                      ContentTemplate="{DataTemplate views:TreatmentPlanPage}" />
+        <ShellContent Route="profile" Title="Profile" Icon="tab_profile.png"
+                      ContentTemplate="{DataTemplate views:ProfilePage}" />
+    </TabBar>
+
+</Shell>

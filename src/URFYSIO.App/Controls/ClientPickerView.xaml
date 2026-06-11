@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="URFYSIO.App.Controls.ClientPickerView">
+    <!--
+        Reusable searchable client picker. Used by TreatmentPlanPage (to pick a client
+        for a new plan) and BookAppointmentPage (to pick a client the physio is booking
+        FOR). The host ViewModel must expose these bindable members:
+
+            ClientList                    : collection of UserDto (unused here but kept on
+                                            the VM for the clear-selection repopulate)
+            FilteredClients               : collection of UserDto narrowed by ClientSearchText
+            ClientSearchText              : two-way bound SearchBar text
+            SelectedClient                : UserDto? — null when nothing is picked
+            IsClientSelected              : bool derived from SelectedClient
+            SelectClientCommand           : takes a UserDto parameter
+            ClearClientSelectionCommand   : no parameter
+
+        BindingContext is inherited from the parent page, so the host VM's instance is
+        the context for all bindings inside this view. x:DataType is intentionally NOT
+        set on these elements so reflection-based bindings work with any host type.
+    -->
+    <VerticalStackLayout Spacing="8">
+
+        <!-- "Selected: [name] ✕" chip — only visible after a client is picked -->
+        <Border IsVisible="{Binding IsClientSelected}"
+                Padding="10,6" StrokeShape="RoundRectangle 16"
+                BackgroundColor="{StaticResource Primary}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <Label Grid.Column="0"
+                       Text="{Binding SelectedClient.FullName, StringFormat='Selected: {0}'}"
+                       TextColor="White" VerticalOptions="Center" FontSize="13" />
+                <Button Grid.Column="1"
+                        Text="✕" FontSize="14"
+                        BackgroundColor="Transparent" TextColor="White"
+                        Padding="6,0" HeightRequest="28" WidthRequest="28"
+                        Command="{Binding ClearClientSelectionCommand}" />
+            </Grid>
+        </Border>
+
+        <!-- Search + list — only visible when NOT selected -->
+        <VerticalStackLayout Spacing="4"
+                             IsVisible="{Binding IsClientSelected, Converter={StaticResource InvertedBoolConverter}}">
+            <SearchBar Placeholder="Search clients by name..."
+                       Text="{Binding ClientSearchText, Mode=TwoWay}" />
+
+            <!-- Capped to ~260dp so the list doesn't push the rest of the form off screen. -->
+            <CollectionView ItemsSource="{Binding FilteredClients}"
+                            HeightRequest="260"
+                            EmptyView="No clients match.">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="x:Object">
+                        <Border Margin="0,2" Padding="10" StrokeShape="RoundRectangle 6">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type ContentView}}, Path=BindingContext.SelectClientCommand}"
+                                    CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+                            <VerticalStackLayout>
+                                <Label Text="{Binding FullName}" FontAttributes="Bold" FontSize="14" />
+                                <Label Text="{Binding Email}" FontSize="11"
+                                       TextColor="{StaticResource TextMuted}" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </VerticalStackLayout>
+</ContentView>

@@ -1,0 +1,571 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             xmlns:controls="clr-namespace:URFYSIO.App.Controls"
+             x:Class="URFYSIO.App.Views.TreatmentPlanPage"
+             x:DataType="vm:TreatmentPlanViewModel"
+             Title="{Binding Title}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Logout"
+                     Command="{Binding LogoutCommand, Source={x:Static vm:AppShellViewModel.Instance}}" />
+    </ContentPage.ToolbarItems>
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="10" Padding="20">
+
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+            <Label Text="{Binding SuccessMessage}"
+                   TextColor="{StaticResource Success}"
+                   FontSize="14"
+                   IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                   Margin="0,5" />
+
+            <!-- Active / History tab toggle. Same data set, two filtered views — see
+                 RebuildVisibleCollections in the VM. -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button Grid.Column="0" Text="Active"
+                        Command="{Binding ShowActiveCommand}"
+                        CornerRadius="8" HeightRequest="40">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsHistoryTab}" Value="False">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsHistoryTab}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Gray200}" />
+                            <Setter Property="TextColor" Value="{StaticResource TextSecondary}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Grid.Column="1" Text="History"
+                        Command="{Binding ShowHistoryCommand}"
+                        CornerRadius="8" HeightRequest="40">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsHistoryTab}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="White" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsHistoryTab}" Value="False">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Gray200}" />
+                            <Setter Property="TextColor" Value="{StaticResource TextSecondary}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </Grid>
+
+            <!-- Admin oversight filter: pick a physiotherapist or a client to inspect
+                 their plans (read-only — editing stays with the owning physio). -->
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAdmin}">
+                <Label Text="View plans" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                <Picker ItemsSource="{Binding PlanFilterModes}"
+                        SelectedItem="{Binding SelectedPlanFilterMode, Mode=TwoWay}" />
+                <Picker Title="Choose a physiotherapist..."
+                        ItemsSource="{Binding FilterPhysios}"
+                        ItemDisplayBinding="{Binding FullName}"
+                        SelectedItem="{Binding FilterPhysio, Mode=TwoWay}"
+                        IsVisible="{Binding ShowPhysioFilter}" />
+                <Picker Title="Choose a client..."
+                        ItemsSource="{Binding ClientList}"
+                        ItemDisplayBinding="{Binding FullName}"
+                        SelectedItem="{Binding FilterClient, Mode=TwoWay}"
+                        IsVisible="{Binding ShowClientFilter}" />
+            </VerticalStackLayout>
+
+            <!--
+                Create-new-plan card: only PHYSIOTHERAPISTS see this — and only on the
+                Active tab (creating a plan while looking at history would be jarring).
+                Admins are gated out via CanCreatePlans because they don't have a
+                PhysiotherapistProfile FK and the form would be a footgun.
+            -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8" Stroke="{StaticResource Primary}">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                        <Binding Path="CanCreatePlans" />
+                        <Binding Path="IsActiveTab" />
+                    </MultiBinding>
+                </Border.IsVisible>
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Create New Treatment Plan" FontSize="16" FontAttributes="Bold" />
+
+                    <Label Text="Select a client:" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <controls:ClientPickerView />
+
+                    <VerticalStackLayout Spacing="10" IsVisible="{Binding IsClientSelected}">
+                        <Entry Placeholder="Plan title (e.g. Lower back rehabilitation)"
+                               Text="{Binding NewPlanTitle}" />
+                        <Editor Placeholder="Description (optional)"
+                                Text="{Binding NewPlanDescription}"
+                                HeightRequest="80" AutoSize="TextChanges" />
+                        <Button Text="Create Plan" Command="{Binding CreatePlanCommand}" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Inline Plan Edit Form -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8" Stroke="{StaticResource Primary}"
+                    BackgroundColor="{StaticResource EditPlanBackground}" IsVisible="{Binding IsEditingPlan}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Edit Treatment Plan" FontSize="16" FontAttributes="Bold" />
+                    <Entry Placeholder="Title" Text="{Binding EditPlanTitle}" />
+                    <Editor Placeholder="Description" Text="{Binding EditPlanDescription}"
+                            HeightRequest="80" AutoSize="TextChanges" />
+                    <HorizontalStackLayout Spacing="10">
+                        <Button Text="Save" Command="{Binding SavePlanEditCommand}" />
+                        <Button Text="Cancel" Command="{Binding CancelPlanEditCommand}"
+                                BackgroundColor="{StaticResource Gray300}" TextColor="{StaticResource TextPrimary}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Inline Entry Edit Form -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8" Stroke="{StaticResource Primary}"
+                    BackgroundColor="{StaticResource EditEntryBackground}" IsVisible="{Binding IsEditingEntry}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Edit Entry" FontSize="16" FontAttributes="Bold" />
+                    <Entry Placeholder="Title" Text="{Binding EditEntryTitle}" />
+                    <Editor Placeholder="Description" Text="{Binding EditEntryDescription}"
+                            HeightRequest="80" AutoSize="TextChanges" />
+                    <HorizontalStackLayout Spacing="10">
+                        <Label Text="Order:" VerticalOptions="Center" />
+                        <Entry Text="{Binding EditEntryOrderIndex}" Keyboard="Numeric" WidthRequest="60" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="10">
+                        <CheckBox IsChecked="{Binding EditEntryIsCompleted}" />
+                        <Label Text="Completed" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="10">
+                        <Button Text="Save" Command="{Binding SaveEntryEditCommand}" />
+                        <Button Text="Cancel" Command="{Binding CancelEntryEditCommand}"
+                                BackgroundColor="{StaticResource Gray300}" TextColor="{StaticResource TextPrimary}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Inline Add-Entry Form. Same visual treatment as Edit Entry but with
+                 a placeholder context line ("Adding to: <plan title>") so the physio
+                 doesn't get confused about which plan the entry is being attached to,
+                 and no "completed"/"order" fields — order is auto-assigned to the
+                 next slot at the bottom of the list. -->
+            <Border Padding="15" StrokeShape="RoundRectangle 8" Stroke="{StaticResource Primary}"
+                    BackgroundColor="{StaticResource EditEntryBackground}" IsVisible="{Binding IsAddingEntry}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Add Entry" FontSize="16" FontAttributes="Bold" />
+                    <Label Text="{Binding AddingEntryPlanTitle, StringFormat='Adding to: {0}'}"
+                           FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                    <Entry Placeholder="Entry title (e.g. Hip flexor stretch)"
+                           Text="{Binding NewEntryTitle}" />
+                    <Editor Placeholder="Description (optional)"
+                            Text="{Binding NewEntryDescription}"
+                            HeightRequest="80" AutoSize="TextChanges" />
+                    <HorizontalStackLayout Spacing="10">
+                        <Button Text="Save" Command="{Binding SaveNewEntryCommand}" />
+                        <Button Text="Cancel" Command="{Binding CancelAddEntryCommand}"
+                                BackgroundColor="{StaticResource Gray300}" TextColor="{StaticResource TextPrimary}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+
+            <!--
+                PHYSIO/ADMIN VIEW — grouped by client. The plan template is shared
+                between Active and History; the differences (mark-completed vs reopen
+                button, edit/delete visibility) are gated by IsCompleted / IsActiveTab.
+            -->
+            <VerticalStackLayout IsVisible="{Binding IsPhysioOrAdmin}">
+                <Label Text="No clients have treatment plans yet."
+                       HorizontalOptions="Center"
+                       FontSize="14"
+                       Padding="0,20"
+                       TextColor="{StaticResource TextMuted}"
+                       IsVisible="{Binding HasNoGroupedPlans}">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label" Binding="{Binding IsHistoryTab}" Value="True">
+                            <Setter Property="Text" Value="No completed treatment plans yet." />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+
+                <CollectionView ItemsSource="{Binding ClientGroups}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="x:Object">
+                            <Border Margin="0,5" Padding="0" StrokeShape="RoundRectangle 8">
+                                <VerticalStackLayout>
+                                    <Grid Padding="15,10" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"
+                                          BackgroundColor="{StaticResource Gray100}">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=ToggleGroupExpandedCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        </Grid.GestureRecognizers>
+                                        <Label Grid.Column="0" Text="{Binding ChevronGlyph}" FontSize="16"
+                                               VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding ClientName}"
+                                               FontAttributes="Bold" FontSize="16"
+                                               VerticalOptions="Center" />
+                                        <Label Grid.Column="2"
+                                               Text="{Binding Count, StringFormat='{0} plan(s)'}"
+                                               FontSize="12"
+                                               TextColor="{StaticResource TextMuted}"
+                                               VerticalOptions="Center" />
+                                    </Grid>
+
+                                    <!-- Plans inside the group -->
+                                    <CollectionView ItemsSource="{Binding .}"
+                                                    IsVisible="{Binding IsExpanded}">
+                                        <CollectionView.ItemTemplate>
+                                            <DataTemplate x:DataType="x:Object">
+                                                <Border Margin="10,5" Padding="15" StrokeShape="RoundRectangle 6">
+                                                    <VerticalStackLayout Spacing="5">
+                                                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+                                                            <VerticalStackLayout Grid.Column="0">
+                                                                <Label Text="{Binding Title}" FontAttributes="Bold" FontSize="15" />
+                                                                <Label Text="{Binding Description}" FontSize="13"
+                                                                       TextColor="{StaticResource TextSecondary}" />
+                                                                <!-- Completion stamp only on history-tab plans -->
+                                                                <Label Text="{Binding CompletedOnLabel}" FontSize="11"
+                                                                       FontAttributes="Italic"
+                                                                       TextColor="{StaticResource Success}"
+                                                                       IsVisible="{Binding IsCompleted}" />
+                                                            </VerticalStackLayout>
+
+                                                            <!-- Action buttons — Edit and Delete only on active plans, and only
+                                                                 for physios (CanCreatePlans). Admin oversight is read-only. -->
+                                                            <Button Grid.Column="1" Text="Edit" FontSize="11"
+                                                                    BackgroundColor="Transparent" TextColor="{StaticResource Primary}"
+                                                                    Padding="5,0"
+                                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=EditPlanCommand}"
+                                                                    CommandParameter="{Binding .}">
+                                                                <Button.IsVisible>
+                                                                    <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                                                                        <Binding Path="IsCompleted" Converter="{StaticResource InvertedBoolConverter}" />
+                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="CanCreatePlans" />
+                                                                    </MultiBinding>
+                                                                </Button.IsVisible>
+                                                            </Button>
+                                                            <Button Grid.Column="2" Text="Delete" FontSize="11"
+                                                                    BackgroundColor="Transparent" TextColor="{StaticResource Error}"
+                                                                    Padding="5,0"
+                                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=DeletePlanCommand}"
+                                                                    CommandParameter="{Binding .}">
+                                                                <Button.IsVisible>
+                                                                    <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                                                                        <Binding Path="IsCompleted" Converter="{StaticResource InvertedBoolConverter}" />
+                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="CanCreatePlans" />
+                                                                    </MultiBinding>
+                                                                </Button.IsVisible>
+                                                            </Button>
+                                                            <!-- Mark Completed (active) or Reopen (history). Mutually exclusive
+                                                                 via IsCompleted; physio-only via CanCreatePlans on the VM. -->
+                                                            <Button Grid.Column="3" Text="Mark Completed" FontSize="11"
+                                                                    BackgroundColor="{StaticResource Success}" TextColor="White"
+                                                                    Padding="8,0" CornerRadius="6"
+                                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=MarkPlanCompletedCommand}"
+                                                                    CommandParameter="{Binding .}">
+                                                                <Button.IsVisible>
+                                                                    <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                                                                        <Binding Path="IsCompleted" Converter="{StaticResource InvertedBoolConverter}" />
+                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="CanCreatePlans" />
+                                                                    </MultiBinding>
+                                                                </Button.IsVisible>
+                                                            </Button>
+                                                            <Button Grid.Column="3" Text="Reopen" FontSize="11"
+                                                                    BackgroundColor="Transparent" TextColor="{StaticResource Primary}"
+                                                                    Padding="5,0"
+                                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=ReopenPlanCommand}"
+                                                                    CommandParameter="{Binding .}">
+                                                                <Button.IsVisible>
+                                                                    <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                                                                        <Binding Path="IsCompleted" />
+                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="CanCreatePlans" />
+                                                                    </MultiBinding>
+                                                                </Button.IsVisible>
+                                                            </Button>
+                                                        </Grid>
+
+                                                        <BoxView HeightRequest="1" Color="{StaticResource Gray200}" Margin="0,5" />
+
+                                                        <Label Text="Entries:" FontAttributes="Bold" FontSize="12" />
+                                                        <CollectionView ItemsSource="{Binding Entries}">
+                                                            <CollectionView.EmptyView>
+                                                                <ContentView>
+                                                                    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Padding="10">
+                                                                        <Label Text="No entries in this plan."
+                                                                               HorizontalOptions="Center"
+                                                                               FontSize="14"
+                                                                               TextColor="{StaticResource TextMuted}" />
+                                                                    </VerticalStackLayout>
+                                                                </ContentView>
+                                                            </CollectionView.EmptyView>
+                                                            <CollectionView.ItemTemplate>
+                                                                <DataTemplate x:DataType="x:Object">
+                                                                    <VerticalStackLayout Margin="0,4">
+                                                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                                                                            <CheckBox Grid.Column="0" IsChecked="{Binding IsCompleted}" IsEnabled="False" />
+                                                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                                                                <Label Text="{Binding Title}" FontAttributes="Bold" FontSize="13" />
+                                                                                <Label Text="{Binding Description}" FontSize="11"
+                                                                                       TextColor="{StaticResource TextMuted}" />
+                                                                            </VerticalStackLayout>
+                                                                            <!-- Entry edit/delete: hidden on history-tab plans AND for non-physios.
+                                                                                 The composite (IsActiveTab AND CanCreatePlans) means admins
+                                                                                 see read-only entries — the API rejects their writes anyway
+                                                                                 so showing the buttons would just be a tease. -->
+                                                                            <Button Grid.Column="2" Text="Edit" FontSize="10"
+                                                                                    BackgroundColor="Transparent" TextColor="{StaticResource Primary}"
+                                                                                    Padding="4,0"
+                                                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=EditEntryCommand}"
+                                                                                    CommandParameter="{Binding .}">
+                                                                                <Button.IsVisible>
+                                                                                    <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="IsActiveTab" />
+                                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="CanCreatePlans" />
+                                                                                    </MultiBinding>
+                                                                                </Button.IsVisible>
+                                                                            </Button>
+                                                                            <Button Grid.Column="3" Text="Delete" FontSize="10"
+                                                                                    BackgroundColor="Transparent" TextColor="{StaticResource Error}"
+                                                                                    Padding="4,0"
+                                                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=DeleteEntryCommand}"
+                                                                                    CommandParameter="{Binding .}">
+                                                                                <Button.IsVisible>
+                                                                                    <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="IsActiveTab" />
+                                                                                        <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="CanCreatePlans" />
+                                                                                    </MultiBinding>
+                                                                                </Button.IsVisible>
+                                                                            </Button>
+                                                                        </Grid>
+
+                                                                        <!-- Comment thread: header toggle + lazy-loaded list + composer -->
+                                                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Padding="32,4,0,0">
+                                                                            <Grid.GestureRecognizers>
+                                                                                <TapGestureRecognizer Command="{Binding ToggleCommentsCommand}" />
+                                                                            </Grid.GestureRecognizers>
+                                                                            <Label Grid.Column="0" Text="{Binding ChevronGlyph}" FontSize="11"
+                                                                                   TextColor="{StaticResource Primary}" VerticalOptions="Center" />
+                                                                            <Label Grid.Column="1" Text="{Binding CommentCountLabel}" FontSize="11"
+                                                                                   TextColor="{StaticResource Primary}" VerticalOptions="Center" />
+                                                                        </Grid>
+
+                                                                        <VerticalStackLayout Padding="32,4,0,0" Spacing="4"
+                                                                                             IsVisible="{Binding IsCommentsExpanded}">
+                                                                            <ActivityIndicator IsRunning="{Binding IsLoadingComments}"
+                                                                                               IsVisible="{Binding IsLoadingComments}" />
+                                                                            <Label Text="{Binding CommentsError}" FontSize="10"
+                                                                                   TextColor="{StaticResource Error}"
+                                                                                   IsVisible="{Binding CommentsError, Converter={StaticResource IsNotNullConverter}}" />
+                                                                            <CollectionView ItemsSource="{Binding Comments}"
+                                                                                            EmptyView="No comments yet.">
+                                                                                <CollectionView.ItemTemplate>
+                                                                                    <DataTemplate x:DataType="x:Object">
+                                                                                        <VerticalStackLayout Margin="0,2" Spacing="1">
+                                                                                            <Label FontSize="10"
+                                                                                                   TextColor="{StaticResource TextMuted}">
+                                                                                                <Label.FormattedText>
+                                                                                                    <FormattedString>
+                                                                                                        <Span Text="{Binding AuthorName}" FontAttributes="Bold" />
+                                                                                                        <Span Text=" (" />
+                                                                                                        <Span Text="{Binding AuthorRole}" />
+                                                                                                        <Span Text=") · " />
+                                                                                                        <Span Text="{Binding CreatedAt, StringFormat='{0:dd/MM/yyyy HH:mm}'}" />
+                                                                                                    </FormattedString>
+                                                                                                </Label.FormattedText>
+                                                                                            </Label>
+                                                                                            <Label Text="{Binding Text}" FontSize="12" />
+                                                                                        </VerticalStackLayout>
+                                                                                    </DataTemplate>
+                                                                                </CollectionView.ItemTemplate>
+                                                                            </CollectionView>
+
+                                                                            <!-- Composer: hidden on completed plans (history is read-only). -->
+                                                                            <VerticalStackLayout Spacing="2"
+                                                                                                 IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=IsActiveTab}">
+                                                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                                                    <Editor Grid.Column="0" Placeholder="Add a comment..."
+                                                                                            Text="{Binding NewCommentText}"
+                                                                                            AutoSize="TextChanges"
+                                                                                            FontSize="12" />
+                                                                                    <Button Grid.Column="1" Text="Post" FontSize="11"
+                                                                                            Command="{Binding AddCommentCommand}"
+                                                                                            IsEnabled="{Binding CanSubmitComment}"
+                                                                                            VerticalOptions="End" />
+                                                                                </Grid>
+                                                                                <Label Text="{Binding CommentCharCountLabel}" FontSize="11"
+                                                                                       HorizontalOptions="End"
+                                                                                       TextColor="{StaticResource TextSecondary}">
+                                                                                    <Label.Triggers>
+                                                                                        <DataTrigger TargetType="Label" Binding="{Binding IsCommentTooLong}" Value="True">
+                                                                                            <Setter Property="TextColor" Value="{StaticResource Error}" />
+                                                                                        </DataTrigger>
+                                                                                    </Label.Triggers>
+                                                                                </Label>
+                                                                            </VerticalStackLayout>
+                                                                        </VerticalStackLayout>
+                                                                    </VerticalStackLayout>
+                                                                </DataTemplate>
+                                                            </CollectionView.ItemTemplate>
+                                                        </CollectionView>
+
+                                                        <!-- Per-plan "+ Add entry" — physio-only, active-tab-only.
+                                                             Passes the plan wrapper as CommandParameter so the VM
+                                                             knows which plan the new entry attaches to. -->
+                                                        <Button Text="+ Add entry" FontSize="11"
+                                                                HorizontalOptions="Start"
+                                                                BackgroundColor="Transparent" TextColor="{StaticResource Primary}"
+                                                                Padding="0" Margin="0,4,0,0"
+                                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=StartAddEntryCommand}"
+                                                                CommandParameter="{Binding .}">
+                                                            <Button.IsVisible>
+                                                                <MultiBinding Converter="{StaticResource AllTrueConverter}">
+                                                                    <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="IsActiveTab" />
+                                                                    <Binding Source="{RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}" Path="CanCreatePlans" />
+                                                                </MultiBinding>
+                                                            </Button.IsVisible>
+                                                        </Button>
+                                                    </VerticalStackLayout>
+                                                </Border>
+                                            </DataTemplate>
+                                        </CollectionView.ItemTemplate>
+                                    </CollectionView>
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </VerticalStackLayout>
+
+            <!--
+                CLIENT VIEW — flat list. Active and History use the same template.
+                Clients don't see edit/delete/complete buttons; they CAN comment on
+                entries while the plan is active.
+            -->
+            <CollectionView ItemsSource="{Binding Plans}"
+                            IsVisible="{Binding IsClient}">
+                <CollectionView.EmptyView>
+                    <ContentView>
+                        <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Padding="10,30">
+                            <Label Text="No treatment plans found." HorizontalOptions="Center"
+                                   FontSize="14" TextColor="{StaticResource TextMuted}" />
+                        </VerticalStackLayout>
+                    </ContentView>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="x:Object">
+                        <Border Margin="0,5" Padding="15" StrokeShape="RoundRectangle 8">
+                            <VerticalStackLayout Spacing="5">
+                                <Label Text="{Binding Title}" FontAttributes="Bold" FontSize="16" />
+                                <Label Text="{Binding Description}" FontSize="13"
+                                       TextColor="{StaticResource TextSecondary}" />
+                                <Label Text="{Binding CompletedOnLabel}" FontSize="11"
+                                       FontAttributes="Italic"
+                                       TextColor="{StaticResource Success}"
+                                       IsVisible="{Binding IsCompleted}" />
+
+                                <BoxView HeightRequest="1" Color="{StaticResource Gray200}" Margin="0,5" />
+
+                                <Label Text="Entries:" FontAttributes="Bold" FontSize="12" />
+                                <CollectionView ItemsSource="{Binding Entries}">
+                                    <CollectionView.EmptyView>
+                                        <ContentView>
+                                            <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Padding="10">
+                                                <Label Text="No entries in this plan."
+                                                       HorizontalOptions="Center"
+                                                       FontSize="14"
+                                                       TextColor="{StaticResource TextMuted}" />
+                                            </VerticalStackLayout>
+                                        </ContentView>
+                                    </CollectionView.EmptyView>
+                                    <CollectionView.ItemTemplate>
+                                        <DataTemplate x:DataType="x:Object">
+                                            <VerticalStackLayout Margin="0,4">
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsCompleted}" IsEnabled="False" />
+                                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                                        <Label Text="{Binding Title}" FontAttributes="Bold" FontSize="13" />
+                                                        <Label Text="{Binding Description}" FontSize="11"
+                                                               TextColor="{StaticResource TextMuted}" />
+                                                    </VerticalStackLayout>
+                                                </Grid>
+
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Padding="32,4,0,0">
+                                                    <Grid.GestureRecognizers>
+                                                        <TapGestureRecognizer Command="{Binding ToggleCommentsCommand}" />
+                                                    </Grid.GestureRecognizers>
+                                                    <Label Grid.Column="0" Text="{Binding ChevronGlyph}" FontSize="11"
+                                                           TextColor="{StaticResource Primary}" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Text="{Binding CommentCountLabel}" FontSize="11"
+                                                           TextColor="{StaticResource Primary}" VerticalOptions="Center" />
+                                                </Grid>
+
+                                                <VerticalStackLayout Padding="32,4,0,0" Spacing="4"
+                                                                     IsVisible="{Binding IsCommentsExpanded}">
+                                                    <ActivityIndicator IsRunning="{Binding IsLoadingComments}"
+                                                                       IsVisible="{Binding IsLoadingComments}" />
+                                                    <Label Text="{Binding CommentsError}" FontSize="10"
+                                                           TextColor="{StaticResource Error}"
+                                                           IsVisible="{Binding CommentsError, Converter={StaticResource IsNotNullConverter}}" />
+                                                    <CollectionView ItemsSource="{Binding Comments}"
+                                                                    EmptyView="No comments yet.">
+                                                        <CollectionView.ItemTemplate>
+                                                            <DataTemplate x:DataType="x:Object">
+                                                                <VerticalStackLayout Margin="0,2" Spacing="1">
+                                                                    <Label FontSize="10"
+                                                                           TextColor="{StaticResource TextMuted}">
+                                                                        <Label.FormattedText>
+                                                                            <FormattedString>
+                                                                                <Span Text="{Binding AuthorName}" FontAttributes="Bold" />
+                                                                                <Span Text=" (" />
+                                                                                <Span Text="{Binding AuthorRole}" />
+                                                                                <Span Text=") · " />
+                                                                                <Span Text="{Binding CreatedAt, StringFormat='{0:dd MMM yyyy HH:mm}'}" />
+                                                                            </FormattedString>
+                                                                        </Label.FormattedText>
+                                                                    </Label>
+                                                                    <Label Text="{Binding Text}" FontSize="12" />
+                                                                </VerticalStackLayout>
+                                                            </DataTemplate>
+                                                        </CollectionView.ItemTemplate>
+                                                    </CollectionView>
+
+                                                    <!-- Composer + "X / 1000" counter. The counter was previously only
+                                                         present in the physio grouped view; clients never saw it — that
+                                                         was BUG 7. Same structure as the physio composer now. -->
+                                                    <VerticalStackLayout Spacing="2"
+                                                                         IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=IsActiveTab}">
+                                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                            <Editor Grid.Column="0" Placeholder="Add a comment..."
+                                                                    Text="{Binding NewCommentText}"
+                                                                    AutoSize="TextChanges"
+                                                                    FontSize="12" />
+                                                            <Button Grid.Column="1" Text="Post" FontSize="11"
+                                                                    Command="{Binding AddCommentCommand}"
+                                                                    IsEnabled="{Binding CanSubmitComment}"
+                                                                    VerticalOptions="End" />
+                                                        </Grid>
+                                                        <Label Text="{Binding CommentCharCountLabel}" FontSize="11"
+                                                               HorizontalOptions="End"
+                                                               TextColor="{StaticResource TextSecondary}">
+                                                            <Label.Triggers>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding IsCommentTooLong}" Value="True">
+                                                                    <Setter Property="TextColor" Value="{StaticResource Error}" />
+                                                                </DataTrigger>
+                                                            </Label.Triggers>
+                                                        </Label>
+                                                    </VerticalStackLayout>
+                                                </VerticalStackLayout>
+                                            </VerticalStackLayout>
+                                        </DataTemplate>
+                                    </CollectionView.ItemTemplate>
+                                </CollectionView>
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

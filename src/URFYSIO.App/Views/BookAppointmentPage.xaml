@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             xmlns:controls="clr-namespace:URFYSIO.App.Controls"
+             x:Class="URFYSIO.App.Views.BookAppointmentPage"
+             x:DataType="vm:BookAppointmentViewModel"
+             Title="{Binding Title}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Logout"
+                     Command="{Binding LogoutCommand, Source={x:Static vm:AppShellViewModel.Instance}}" />
+    </ContentPage.ToolbarItems>
+
+    <!--
+        Two flows, one page:
+          • Client (IsClient=true): pick a physio → their slots appear → book for yourself.
+          • Physio/Admin (IsPhysioOrAdmin=true): pick a client (searchable) → YOUR OWN slots
+            are already loaded → book on the client's behalf. Admins see a short-circuit
+            error in the VM because they don't have a PhysiotherapistProfile.
+        The slot list section is always visible; the selection-sources above it differ.
+    -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="20" RowSpacing="10">
+
+        <!-- Row 0: Selection source (role-dependent) -->
+        <VerticalStackLayout Grid.Row="0" Spacing="6">
+
+            <!-- CLIENT: classic physiotherapist Picker -->
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsClient}">
+                <Label Text="Select a physiotherapist:" FontSize="16" FontAttributes="Bold" />
+                <Border Padding="4" StrokeShape="RoundRectangle 8">
+                    <Picker Title="Choose a physiotherapist..."
+                            ItemsSource="{Binding Physiotherapists}"
+                            ItemDisplayBinding="{Binding FullName}"
+                            SelectedItem="{Binding SelectedPhysiotherapist, Mode=TwoWay}" />
+                </Border>
+            </VerticalStackLayout>
+
+            <!-- PHYSIO/ADMIN: searchable client picker. The logged-in physio's own slots
+                 are loaded up-front in LoadInitialDataAsync, so the slot list below is
+                 already populated — the only thing to choose here is WHO the booking is
+                 for. -->
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsPhysioOrAdmin}">
+                <Label Text="Book for client:" FontSize="16" FontAttributes="Bold" />
+                <controls:ClientPickerView />
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+
+        <!-- Row 1: Slot list header (role-dependent hint text) -->
+        <Label Grid.Row="1" FontSize="14" FontAttributes="Bold"
+               Text="Available time slots:"
+               Margin="0,10,0,0">
+            <Label.Triggers>
+                <!-- Client flow: header only makes sense once a physio is picked. -->
+                <MultiTrigger TargetType="Label">
+                    <MultiTrigger.Conditions>
+                        <BindingCondition Binding="{Binding IsClient}" Value="True" />
+                        <BindingCondition Binding="{Binding SelectedPhysiotherapist, Converter={StaticResource IsNotNullConverter}}" Value="False" />
+                    </MultiTrigger.Conditions>
+                    <Setter Property="IsVisible" Value="False" />
+                </MultiTrigger>
+            </Label.Triggers>
+        </Label>
+
+        <!-- Row 1 overlay: client-flow placeholder when no physio picked -->
+        <Label Grid.Row="1" FontSize="14" TextColor="{StaticResource TextMuted}"
+               Text="Select a physiotherapist to view available slots."
+               Margin="0,10,0,0">
+            <Label.Triggers>
+                <DataTrigger TargetType="Label" Binding="{Binding IsClient}" Value="False">
+                    <Setter Property="IsVisible" Value="False" />
+                </DataTrigger>
+                <DataTrigger TargetType="Label"
+                             Binding="{Binding SelectedPhysiotherapist, Converter={StaticResource IsNotNullConverter}}"
+                             Value="True">
+                    <Setter Property="IsVisible" Value="False" />
+                </DataTrigger>
+            </Label.Triggers>
+        </Label>
+
+        <!-- Row 2: Slot list. Visible in physio/admin flow always (their own slots are
+             pre-loaded); in client flow only once a physio is picked. -->
+        <CollectionView Grid.Row="2" ItemsSource="{Binding AvailableSlots}"
+                        SelectedItem="{Binding SelectedSlot, Mode=TwoWay}"
+                        SelectionMode="Single"
+                        EmptyView="No available slots.">
+            <CollectionView.Triggers>
+                <MultiTrigger TargetType="CollectionView">
+                    <MultiTrigger.Conditions>
+                        <BindingCondition Binding="{Binding IsClient}" Value="True" />
+                        <BindingCondition Binding="{Binding SelectedPhysiotherapist, Converter={StaticResource IsNotNullConverter}}" Value="False" />
+                    </MultiTrigger.Conditions>
+                    <Setter Property="IsVisible" Value="False" />
+                </MultiTrigger>
+            </CollectionView.Triggers>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="x:Object">
+                    <Border Margin="0,4" Padding="12" StrokeShape="RoundRectangle 8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <VerticalStackLayout Grid.Column="0">
+                                <Label FontAttributes="Bold">
+                                    <Label.FormattedText>
+                                        <FormattedString>
+                                            <Span Text="{Binding StartTime, StringFormat='{0:dd/MM/yyyy}'}" />
+                                            <Span Text="  " />
+                                            <Span Text="{Binding StartTime, StringFormat='{0:HH:mm}'}" />
+                                            <Span Text=" - " />
+                                            <Span Text="{Binding EndTime, StringFormat='{0:HH:mm}'}" />
+                                        </FormattedString>
+                                    </Label.FormattedText>
+                                </Label>
+                                <Label Text="Available" TextColor="{StaticResource Success}" FontSize="12" />
+                            </VerticalStackLayout>
+                            <Button Grid.Column="1" Text="Book"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:BookAppointmentViewModel}}, Path=ConfirmBookingCommand}"
+                                    CommandParameter="{Binding .}"
+                                    Padding="10,0" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Row 3: Footer (banners + global book button) -->
+        <VerticalStackLayout Grid.Row="3" Spacing="8">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+            <Label Text="{Binding SuccessMessage}"
+                   TextColor="{StaticResource Success}"
+                   FontSize="14"
+                   IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                   Margin="0,5" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+            <Button Text="Book Selected Slot" Command="{Binding BookSelectedSlotCommand}"
+                    HeightRequest="48" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

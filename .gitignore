@@ -53,7 +53,9 @@ PublishProfiles/
 *.apk
 *.aab
 *.ipa
-*.app
+# NOTE: *.app intentionally omitted — macOS .app bundles land inside bin/ which
+# is already excluded above. A *.app rule would also match the URFYSIO.App/
+# project directory name and exclude the entire MAUI frontend from git.
 # Android signing keys — never commit
 *.keystore
 *.jks

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             xmlns:sys="clr-namespace:System;assembly=netstandard"
+             x:Class="URFYSIO.App.Views.AvailabilityPage"
+             x:DataType="vm:AvailabilityViewModel"
+             Title="{Binding Title}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Logout"
+                     Command="{Binding LogoutCommand, Source={x:Static vm:AppShellViewModel.Instance}}" />
+    </ContentPage.ToolbarItems>
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="15" Padding="20">
+
+            <!-- Admin: pick whose calendar to manage. Physios never see this — they
+                 always manage their own. The form + slot lists below stay hidden for
+                 admins until a physiotherapist is selected (ShowManagementUi). -->
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAdmin}">
+                <Label Text="Manage availability for" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+                <Picker Title="Choose a physiotherapist..."
+                        ItemsSource="{Binding Physiotherapists}"
+                        ItemDisplayBinding="{Binding FullName}"
+                        SelectedItem="{Binding SelectedPhysiotherapist, Mode=TwoWay}" />
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="15" IsVisible="{Binding ShowManagementUi}">
+
+            <!-- Form header toggles between Add and Edit -->
+            <Label FontSize="18" FontAttributes="Bold">
+                <Label.Triggers>
+                    <DataTrigger TargetType="Label" Binding="{Binding IsEditing}" Value="True">
+                        <Setter Property="Text" Value="Edit Availability Slot" />
+                    </DataTrigger>
+                    <DataTrigger TargetType="Label" Binding="{Binding IsEditing}" Value="False">
+                        <Setter Property="Text" Value="Add Availability Slot" />
+                    </DataTrigger>
+                </Label.Triggers>
+            </Label>
+
+            <Label Text="Date" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+            <DatePicker Date="{Binding NewSlotDate}" MinimumDate="{x:Static sys:DateTime.Today}" />
+
+            <!-- Start time: hour + minute dropdowns (work hours, half-hour steps).
+                 Replaces the per-minute TimePicker which was unusable. -->
+            <Label Text="Start time" FontSize="12" TextColor="{StaticResource TextSecondary}" />
+            <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="8">
+                <Picker Grid.Column="0" Title="Hour"
+                        ItemsSource="{Binding HourOptions}"
+                        SelectedItem="{Binding SelectedHour, Mode=TwoWay}" />
+                <Label Grid.Column="1" Text=":" FontSize="18" FontAttributes="Bold"
+                       VerticalOptions="Center" />
+                <Picker Grid.Column="2" Title="Min"
+                        ItemsSource="{Binding MinuteOptions}"
+                        SelectedItem="{Binding SelectedMinute, Mode=TwoWay}" />
+            </Grid>
+
+            <Label FontSize="12" TextColor="{StaticResource TextMuted}"
+                   Text="{Binding NewSlotEndTime, StringFormat='Ends at {0:hh\\:mm} (30 minutes)'}" />
+
+            <!-- Add button (visible when not editing) -->
+            <Button Text="Add Slot" Command="{Binding AddSlotCommand}"
+                    IsVisible="{Binding IsEditing, Converter={StaticResource InvertedBoolConverter}}" />
+
+            <!-- Save / Cancel buttons (visible when editing) -->
+            <HorizontalStackLayout Spacing="10" IsVisible="{Binding IsEditing}">
+                <Button Text="Save Changes" Command="{Binding SaveEditCommand}"
+                        HorizontalOptions="Fill" />
+                <Button Text="Cancel" Command="{Binding CancelEditCommand}"
+                        BackgroundColor="{StaticResource Gray300}" TextColor="{StaticResource TextPrimary}" />
+            </HorizontalStackLayout>
+
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+            <Label Text="{Binding SuccessMessage}"
+                   TextColor="{StaticResource Success}"
+                   FontSize="14"
+                   IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                   Margin="0,5" />
+
+            <BoxView HeightRequest="1" Color="{StaticResource Gray200}" Margin="0,10" />
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+
+            <!-- Upcoming slots — editable. -->
+            <Label Text="Upcoming" FontSize="18" FontAttributes="Bold" />
+            <CollectionView ItemsSource="{Binding UpcomingSlots}" EmptyView="No upcoming slots.">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="x:Object">
+                        <Border Margin="0,4" Padding="10" StrokeShape="RoundRectangle 8">
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                <VerticalStackLayout Grid.Column="0">
+                                    <Label Text="{Binding StartTime, StringFormat='{0:dd/MM/yyyy}'}"
+                                           FontAttributes="Bold" />
+                                    <Label TextColor="{StaticResource TextSecondary}">
+                                        <Label.Text>
+                                            <MultiBinding StringFormat="From {0:HH:mm} to {1:HH:mm}">
+                                                <Binding Path="StartTime" />
+                                                <Binding Path="EndTime" />
+                                            </MultiBinding>
+                                        </Label.Text>
+                                    </Label>
+                                    <Label Text="{Binding IsBooked, StringFormat='Booked: {0}'}"
+                                           FontSize="11" TextColor="{StaticResource TextMuted}" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1" Text="Edit" FontSize="11"
+                                        BackgroundColor="Transparent" TextColor="{StaticResource Primary}"
+                                        Padding="5,0"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AvailabilityViewModel}}, Path=EditSlotCommand}"
+                                        CommandParameter="{Binding .}" />
+                                <Button Grid.Column="2" Text="Delete" FontSize="11"
+                                        BackgroundColor="Transparent" TextColor="{StaticResource Error}"
+                                        Padding="5,0"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AvailabilityViewModel}}, Path=DeleteSlotCommand}"
+                                        CommandParameter="{Binding .}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Past slots — read-only history (only past BOOKED slots reach here;
+                 past unbooked slots are dropped server-side). Greyed + italic, no
+                 edit/delete buttons. -->
+            <VerticalStackLayout Spacing="8" IsVisible="{Binding HasPastSlots}">
+                <BoxView HeightRequest="1" Color="{StaticResource Gray200}" Margin="0,10" />
+                <Label Text="Past (used for appointments)" FontSize="16" FontAttributes="Bold"
+                       TextColor="{StaticResource TextSecondary}" />
+                <CollectionView ItemsSource="{Binding PastSlots}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="x:Object">
+                            <Border Margin="0,4" Padding="10" StrokeShape="RoundRectangle 8" Opacity="0.6">
+                                <VerticalStackLayout>
+                                    <Label Text="{Binding StartTime, StringFormat='{0:dd/MM/yyyy}'}"
+                                           FontAttributes="Italic" />
+                                    <Label TextColor="{StaticResource TextMuted}" FontAttributes="Italic">
+                                        <Label.Text>
+                                            <MultiBinding StringFormat="From {0:HH:mm} to {1:HH:mm}">
+                                                <Binding Path="StartTime" />
+                                                <Binding Path="EndTime" />
+                                            </MultiBinding>
+                                        </Label.Text>
+                                    </Label>
+                                    <Label Text="{Binding IsBooked, StringFormat='Booked: {0}'}"
+                                           FontSize="11" FontAttributes="Italic"
+                                           TextColor="{StaticResource TextMuted}" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </VerticalStackLayout>
+
+            </VerticalStackLayout> <!-- /ShowManagementUi wrapper -->
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

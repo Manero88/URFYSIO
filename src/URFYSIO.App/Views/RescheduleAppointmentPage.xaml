@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:URFYSIO.App.ViewModels"
+             x:Class="URFYSIO.App.Views.RescheduleAppointmentPage"
+             x:DataType="vm:RescheduleAppointmentViewModel"
+             Title="{Binding Title}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Logout"
+                     Command="{Binding LogoutCommand, Source={x:Static vm:AppShellViewModel.Instance}}" />
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="20" RowSpacing="10">
+
+        <!-- Current appointment details -->
+        <Border Grid.Row="0" Padding="12" StrokeShape="RoundRectangle 8"
+                BackgroundColor="{StaticResource SurfaceBackground}"
+                IsVisible="{Binding CurrentAppointment, Converter={StaticResource IsNotNullConverter}}">
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Current Appointment" FontAttributes="Bold" FontSize="14" />
+                <Label Text="{Binding CurrentAppointment.StartTime, StringFormat='Date: {0:dd/MM/yyyy HH:mm}'}"
+                       FontSize="13" TextColor="{StaticResource TextSecondary}" />
+                <Label Text="{Binding CurrentAppointment.PhysiotherapistName, StringFormat='Physio: {0}'}"
+                       FontSize="13" TextColor="{StaticResource TextSecondary}" />
+            </VerticalStackLayout>
+        </Border>
+
+        <Label Grid.Row="1" Text="Select a new time slot:" FontSize="16" FontAttributes="Bold" />
+
+        <!-- Available slots list -->
+        <CollectionView Grid.Row="2" ItemsSource="{Binding AvailableSlots}"
+                        SelectedItem="{Binding SelectedSlot, Mode=TwoWay}"
+                        SelectionMode="Single"
+                        EmptyView="No available slots.">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="x:Object">
+                    <Border Margin="0,4" Padding="12" StrokeShape="RoundRectangle 8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <VerticalStackLayout Grid.Column="0">
+                                <Label Text="{Binding StartTime, StringFormat='{0:dd/MM/yyyy HH:mm}'}"
+                                       FontAttributes="Bold" />
+                                <Label Text="{Binding EndTime, StringFormat='Until {0:HH:mm}'}"
+                                       FontSize="12" TextColor="{StaticResource TextMuted}" />
+                            </VerticalStackLayout>
+                            <Label Grid.Column="1" Text="Available" TextColor="{StaticResource Success}"
+                                   FontSize="12" VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Bottom section -->
+        <VerticalStackLayout Grid.Row="3" Spacing="8">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Error}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNullConverter}}" />
+            <Label Text="{Binding SuccessMessage}"
+                   TextColor="{StaticResource Success}"
+                   FontSize="14"
+                   IsVisible="{Binding SuccessMessage, Converter={StaticResource IsNotNullConverter}}"
+                   Margin="0,5" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+            <Button Text="Confirm Reschedule" Command="{Binding RescheduleCommand}"
+                    HeightRequest="48" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

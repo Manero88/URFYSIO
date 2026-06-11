@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -146,13 +147,41 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    // Azure SQL serverless auto-pauses after inactivity; waking it takes 30-60 s.
+    // Retry migration so a cold-start doesn't crash the API before the DB is ready.
+    const int maxAttempts = 6;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++)
+    {
+        try
+        {
+            logger.LogInformation("Database migration attempt {Attempt}/{Max}...", attempt, maxAttempts);
+            await db.Database.MigrateAsync();
+            logger.LogInformation("Database ready, migrations applied.");
+            break;
+        }
+        catch (Exception ex) when (ex is SqlException or TimeoutException
+            || ex.InnerException is SqlException or TimeoutException)
+        {
+            if (attempt == maxAttempts)
+            {
+                logger.LogError(ex,
+                    "Database migration failed after {Max} attempts. Aborting startup.", maxAttempts);
+                throw;
+            }
+            logger.LogWarning(ex,
+                "Migration attempt {Attempt}/{Max} failed ({Error}). Retrying in 10 s...",
+                attempt, maxAttempts, ex.Message);
+            await Task.Delay(TimeSpan.FromSeconds(10));
+        }
+    }
+
     await DbSeeder.SeedAsync(db);
 
     // Idempotent repair step for users whose role was flipped by an admin before the
     // profile auto-create fix shipped. This is a no-op once every user has the correct
     // profile, so it's safe to leave running on every startup.
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var backfilled = await DbSeeder.BackfillMissingProfilesAsync(db);
     if (backfilled > 0)
         logger.LogWarning("DbSeeder backfilled {Count} missing profile(s) at startup.", backfilled);

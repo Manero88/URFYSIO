@@ -53,7 +53,7 @@ public interface IApiService
     Task<(TreatmentPlanEntryCommentDto? Comment, string? Error)> AddEntryCommentAsync(Guid entryId, string text);
 
     // Registration
-    Task<bool> SubmitRegistrationAsync(CreateRegistrationRequestDto dto);
+    Task<(bool Success, string? Error)> SubmitRegistrationAsync(CreateRegistrationRequestDto dto);
     /// <summary>
     /// Loads registration requests, optionally filtered server-side by status.
     /// Unlike most list getters this THROWS on HTTP/network failure instead of

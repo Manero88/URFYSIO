@@ -61,7 +61,7 @@ public partial class RegistrationViewModel : BaseViewModel
                 Message = string.IsNullOrWhiteSpace(Message) ? null : Message.Trim()
             };
 
-            var success = await _apiService.SubmitRegistrationAsync(dto);
+            var (success, error) = await _apiService.SubmitRegistrationAsync(dto);
             if (success)
             {
                 IsSubmitted = true;
@@ -69,7 +69,7 @@ public partial class RegistrationViewModel : BaseViewModel
             }
             else
             {
-                SetError("Could not submit your registration. Please try again later.");
+                SetError(error ?? "Could not submit your registration. Please try again later.");
             }
         }
         catch (Exception ex)

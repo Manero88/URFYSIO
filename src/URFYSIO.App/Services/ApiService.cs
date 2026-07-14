@@ -299,8 +299,14 @@ public class ApiService : IApiService
             new CreateTreatmentPlanEntryCommentDto { Text = text });
 
     // --- Registration ---
-    public async Task<bool> SubmitRegistrationAsync(CreateRegistrationRequestDto dto) =>
-        await SafePostBoolAsync("api/registration", dto);
+    // Uses SafePostWithErrorAsync so the API's ProblemDetails.detail (e.g. "This email
+    // address is already registered. Please log in instead.") reaches the UI instead of
+    // being swallowed into a generic "Could not submit" fallback.
+    public async Task<(bool Success, string? Error)> SubmitRegistrationAsync(CreateRegistrationRequestDto dto)
+    {
+        var (value, error) = await SafePostWithErrorAsync<RegistrationRequestDto>("api/registration", dto);
+        return (value is not null, error);
+    }
 
     // Deliberately NOT a SafeGetListAsync call: swallowing a failed load here made the
     // admin's Pending Registrations list look empty whenever the API/DB hiccuped

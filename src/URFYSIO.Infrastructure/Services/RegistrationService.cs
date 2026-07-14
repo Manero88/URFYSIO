@@ -40,12 +40,26 @@ public class RegistrationService : IRegistrationService
 
     public async Task<RegistrationRequest> CreateAsync(RegistrationRequest request)
     {
-        // Check for duplicate email
-        if (await _db.Users.AnyAsync(u => u.Email == request.Email))
-            throw DomainException.Conflict("A user with this email already exists.");
+        // Check for an existing local user — differentiate so the registrant knows what to do.
+        var existingUser = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+        if (existingUser is not null)
+        {
+            if (existingUser.IsActive)
+                throw DomainException.Conflict(
+                    "This email address is already registered. Please log in instead.");
+            else
+                // Inactive row: typically auto-created by Auth0UserSyncMiddleware when someone
+                // previously logged in via Google/Microsoft before they were approved. The account
+                // exists but isn't active yet — direct them to log in (approval will activate it).
+                throw DomainException.Conflict(
+                    "This email address is already associated with an account that is pending activation. " +
+                    "Please log in, or contact the practice if you need help.");
+        }
 
         if (await _db.RegistrationRequests.AnyAsync(r => r.Email == request.Email && r.Status == RegistrationStatus.Pending))
-            throw DomainException.Conflict("A pending registration request for this email already exists.");
+            throw DomainException.Conflict(
+                "A registration for this email is already pending approval. " +
+                "Please wait for the administrator to review your request.");
 
         request.Id = Guid.NewGuid();
         request.Status = RegistrationStatus.Pending;

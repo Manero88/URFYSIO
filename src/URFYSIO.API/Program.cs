@@ -199,21 +199,23 @@ using (var scope = app.Services.CreateScope())
 app.MapGet("/", () => Results.Ok("URFYSIO API is running"));
 app.MapGet("/health", () => Results.Ok("Healthy"));
 
-// Post-login landing page. The MAUI app opens this (Windows) after an Auth0 SSO/signup
-// flow so the user gets a clean confirmation tab that closes itself.
+// Post-login landing page. Shown when the browser navigates here after an Auth0 SSO flow
+// (e.g. the tab the auth flow used ends up on this URL in certain browser configurations).
+// The app does NOT programmatically open this page via Launcher.OpenAsync after login —
+// doing so only creates an extra tab that can't auto-close (window.close() is blocked by
+// browsers for tabs not opened via JavaScript). This page acts as a friendly fallback so
+// the user understands what happened and what to do.
 //
-// IMPORTANT — do NOT add a deep-link back to the app here. An earlier version
-// redirected to "myapp://callback" as a bring-the-app-forward fallback, but that
-// custom scheme IS the Auth0 OIDC redirect URI: navigating to it fires a Windows
-// protocol activation that the Auth0 client plumbing treats as an auth callback,
-// which re-opened the authorize screen after every successful login.
+// IMPORTANT — do NOT add a deep-link (myapp://callback) here. That custom scheme IS the
+// Auth0 OIDC redirect URI; navigating to it fires a Windows protocol activation that the
+// Auth0 client treats as a new auth callback, re-opening the authorize screen.
 app.MapGet("/auth-callback", () => Results.Content("""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>URFYSIO</title>
+    <title>URFYSIO — Login complete</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -222,44 +224,49 @@ app.MapGet("/auth-callback", () => Results.Content("""
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            background: #1a1a2e;
+            background: #000000;
             color: white;
         }
         .card {
             text-align: center;
             padding: 36px 48px;
-            background: #16213e;
-            border: 1px solid #7c3aed;
+            background: #0F0F0F;
+            border: 1px solid #3D4FB8;
             border-radius: 12px;
+            max-width: 360px;
         }
-        h1 { color: #7c3aed; font-size: 1.4em; margin: 0 0 8px 0; }
-        p { font-size: 0.95em; color: #b0b0b0; margin: 6px 0; }
+        h1 { color: #3D4FB8; font-size: 1.4em; margin: 0 0 8px 0; }
+        p { font-size: 0.95em; color: #A0A0A0; margin: 6px 0; }
+        .hint { font-size: 0.85em; color: #666666; margin-top: 14px; }
         .icon { font-size: 2.4em; }
         .btn {
             margin-top: 18px;
             padding: 10px 22px;
-            background: #7c3aed;
+            background: #3D4FB8;
             border: none;
             border-radius: 8px;
             color: white;
             font-size: 0.95em;
             cursor: pointer;
         }
-        .btn:hover { background: #6d28d9; }
+        .btn:hover { background: #2D3F98; }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="icon">&#x2705;</div>
-        <h1>Logged in</h1>
-        <p>You can return to the URFYSIO app.</p>
-        <button class="btn" onclick="window.close()">Close window</button>
+        <h1>Login complete</h1>
+        <p>You are now logged into URFYSIO.</p>
+        <p>You can close this tab and return to the app.</p>
+        <button class="btn" onclick="window.close()">Close this tab</button>
+        <p class="hint">If this tab doesn't close automatically, close it manually — the app is already open.</p>
     </div>
     <script>
-        // Close immediately; retry once in case the first attempt raced page load.
-        // No deep-link fallback — see the route comment above.
+        // Attempt auto-close. Browsers allow this only when the tab was opened by
+        // JavaScript (window.open); OS-launched tabs silently ignore it — in that case
+        // the button and hint text above guide the user.
         window.close();
-        setTimeout(function () { window.close(); }, 300);
+        setTimeout(function () { window.close(); }, 500);
     </script>
 </body>
 </html>
@@ -274,7 +281,7 @@ app.MapGet("/auth-logout", () => Results.Content("""
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>URFYSIO</title>
+    <title>URFYSIO — Logged out</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -283,42 +290,44 @@ app.MapGet("/auth-logout", () => Results.Content("""
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            background: #1a1a2e;
+            background: #000000;
             color: white;
         }
         .card {
             text-align: center;
             padding: 36px 48px;
-            background: #16213e;
-            border: 1px solid #7c3aed;
+            background: #0F0F0F;
+            border: 1px solid #3D4FB8;
             border-radius: 12px;
+            max-width: 360px;
         }
-        h1 { color: #7c3aed; font-size: 1.4em; margin: 0 0 8px 0; }
-        p { font-size: 0.95em; color: #b0b0b0; margin: 6px 0; }
+        h1 { color: #3D4FB8; font-size: 1.4em; margin: 0 0 8px 0; }
+        p { font-size: 0.95em; color: #A0A0A0; margin: 6px 0; }
         .icon { font-size: 2.4em; }
         .btn {
             margin-top: 18px;
             padding: 10px 22px;
-            background: #7c3aed;
+            background: #3D4FB8;
             border: none;
             border-radius: 8px;
             color: white;
             font-size: 0.95em;
             cursor: pointer;
         }
-        .btn:hover { background: #6d28d9; }
+        .btn:hover { background: #2D3F98; }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="icon">&#x1F44B;</div>
         <h1>Logged out</h1>
-        <p>You can close this window.</p>
-        <button class="btn" onclick="window.close()">Close window</button>
+        <p>You have been logged out of URFYSIO.</p>
+        <p>You can close this tab.</p>
+        <button class="btn" onclick="window.close()">Close this tab</button>
     </div>
     <script>
         window.close();
-        setTimeout(function () { window.close(); }, 300);
+        setTimeout(function () { window.close(); }, 500);
     </script>
 </body>
 </html>

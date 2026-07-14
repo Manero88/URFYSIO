@@ -391,9 +391,13 @@ public class AuthService : IAuthService
         CurrentUserName = name;
         CurrentUserId = apiUser?.UserId;
 
-#if WINDOWS
-        try { await Launcher.OpenAsync($"{ApiBaseUrl}/auth-callback"); } catch { }
-#endif
+        // NOTE: Do NOT open /auth-callback here with Launcher.OpenAsync.
+        // Auth0 OIDC on Windows leaves the browser tab from the auth flow open after the
+        // myapp://callback redirect is handled by protocol activation. Opening a second tab
+        // to /auth-callback doesn't close the first — window.close() is blocked by browsers
+        // for tabs not opened via JavaScript — so it only adds a second tab for the user to
+        // close manually. The /auth-callback page exists as a friendly landing if the browser
+        // navigates there via some other path (e.g. a shared link), not as a programmatic close.
 
         return true;
     }

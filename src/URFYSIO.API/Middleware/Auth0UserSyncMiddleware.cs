@@ -69,33 +69,43 @@ public class Auth0UserSyncMiddleware
                 // local claim over a remote round-trip.
                 var jwtEmail = context.User.FindFirstValue(ClaimTypes.Email)
                             ?? context.User.FindFirstValue("email");
+                var jwtFirst = context.User.FindFirstValue(ClaimTypes.GivenName)
+                            ?? context.User.FindFirstValue("given_name");
+                var jwtLast = context.User.FindFirstValue(ClaimTypes.Surname)
+                           ?? context.User.FindFirstValue("family_name");
 
                 var user = await userService.GetByAuth0IdAsync(auth0Id);
 
                 if (user is null)
                 {
-                    // Auto-create flow. We only call the Management API to fetch the
-                    // email if the JWT didn't carry one — saves a round-trip when the
-                    // tenant has an email-injection Action configured.
+                    // Auto-create flow. Social access tokens (Google/Microsoft) carry
+                    // neither email nor name, so fetch the Auth0 profile once and use it
+                    // for both. We skip the round-trip entirely when the JWT already
+                    // supplied everything (tenant with claim-injection Actions).
+                    Auth0UserProfile? profile = null;
+                    if (jwtEmail is null || jwtFirst is null || jwtLast is null)
+                        profile = await auth0Management.GetUserProfileAsync(auth0Id);
+
                     var email = jwtEmail
-                             ?? await auth0Management.GetUserEmailAsync(auth0Id)
+                             ?? profile?.Email
                              ?? $"{auth0Id}@auth0.local";
 
+                    // Only fall back to "Unknown"/"User" when neither the token nor Auth0
+                    // knows the name — otherwise every SSO sign-up looks like a stranger
+                    // in the admin's user list.
+                    var (profileFirst, profileLast) = profile?.SplitName() ?? (null, null);
+                    var firstName = jwtFirst ?? profileFirst ?? "Unknown";
+                    var lastName = jwtLast ?? profileLast ?? "User";
+
                     _logger.LogInformation(
-                        "Auth0Sync: creating local user for {Auth0Id}. JWT email: '{JwtEmail}'. Resolved email: '{Email}'.",
-                        auth0Id, jwtEmail ?? "(none)", email);
+                        "Auth0Sync: creating local user for {Auth0Id}. JWT email: '{JwtEmail}'. " +
+                        "Resolved email: '{Email}'. Resolved name: '{First} {Last}'.",
+                        auth0Id, jwtEmail ?? "(none)", email, firstName, lastName);
 
                     var roleClaim = context.User.FindFirstValue("https://urfysio.nl/roles");
                     var role = Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var parsed)
                         ? parsed
                         : UserRole.Client;
-
-                    var firstName = context.User.FindFirstValue(ClaimTypes.GivenName)
-                                 ?? context.User.FindFirstValue("given_name")
-                                 ?? "Unknown";
-                    var lastName = context.User.FindFirstValue(ClaimTypes.Surname)
-                                ?? context.User.FindFirstValue("family_name")
-                                ?? "User";
 
                     var newUser = new User
                     {
@@ -127,8 +137,9 @@ public class Auth0UserSyncMiddleware
                     var hasFakeEmail = string.IsNullOrEmpty(user.Email)
                                     || user.Email.EndsWith("@auth0.local", StringComparison.OrdinalIgnoreCase)
                                     || user.Email.Equals(auth0Id, StringComparison.OrdinalIgnoreCase);
+                    var hasPlaceholderName = HasPlaceholderName(user);
 
-                    if (hasFakeEmail)
+                    if (hasFakeEmail || hasPlaceholderName)
                     {
                         // Diagnostic: dump every claim the JWT actually carried. This is
                         // the definitive answer to "is the email in the token?" — if it's
@@ -139,40 +150,93 @@ public class Auth0UserSyncMiddleware
                             "Auth0Sync: JWT claims for {Auth0Id} => {Claims}",
                             auth0Id, allClaims);
 
-                        // Try JWT first, then Management API. The Management API call is
-                        // gated on hasFakeEmail so we only pay it on the first login after
-                        // a row gets created with the placeholder — once we update the
-                        // row, this branch never re-fires for the same user.
+                        // Try JWT first, then Management API. The lookup is gated on the
+                        // row actually being incomplete, so we only pay it until the row
+                        // is healed — afterwards this branch never re-fires for that user.
                         var realEmail = jwtEmail;
                         var source = "JWT";
-                        if (string.IsNullOrEmpty(realEmail)
-                            || realEmail.EndsWith("@auth0.local", StringComparison.OrdinalIgnoreCase))
+                        Auth0UserProfile? profile = null;
+
+                        var needsRemoteEmail = hasFakeEmail
+                            && (string.IsNullOrEmpty(realEmail)
+                                || realEmail.EndsWith("@auth0.local", StringComparison.OrdinalIgnoreCase));
+                        var needsRemoteName = hasPlaceholderName && (jwtFirst is null || jwtLast is null);
+
+                        if (needsRemoteEmail || needsRemoteName)
                         {
-                            realEmail = await auth0Management.GetUserEmailAsync(auth0Id);
-                            source = "Auth0 Management API";
+                            profile = await auth0Management.GetUserProfileAsync(auth0Id);
+                            if (needsRemoteEmail)
+                            {
+                                realEmail = profile?.Email;
+                                source = "Auth0 Management API";
+                            }
                         }
 
-                        _logger.LogInformation(
-                            "Auth0Sync: user {UserId} ({Auth0Id}) has fake DB email '{DbEmail}'. " +
-                            "JWT email: '{JwtEmail}'. Resolved via {Source}: '{Resolved}'.",
-                            user.Id, auth0Id, user.Email, jwtEmail ?? "(none)", source, realEmail ?? "(none)");
+                        var changed = false;
 
-                        if (!string.IsNullOrEmpty(realEmail)
-                            && !realEmail.EndsWith("@auth0.local", StringComparison.OrdinalIgnoreCase))
+                        if (hasFakeEmail)
                         {
-                            user.Email = realEmail;
+                            _logger.LogInformation(
+                                "Auth0Sync: user {UserId} ({Auth0Id}) has fake DB email '{DbEmail}'. " +
+                                "JWT email: '{JwtEmail}'. Resolved via {Source}: '{Resolved}'.",
+                                user.Id, auth0Id, user.Email, jwtEmail ?? "(none)", source, realEmail ?? "(none)");
+
+                            if (!string.IsNullOrEmpty(realEmail)
+                                && !realEmail.EndsWith("@auth0.local", StringComparison.OrdinalIgnoreCase))
+                            {
+                                user.Email = realEmail;
+                                changed = true;
+                            }
+                            else
+                            {
+                                _logger.LogWarning(
+                                    "Auth0Sync: could not resolve a real email for user {UserId} ({Auth0Id}); " +
+                                    "leaving placeholder in place. Check that the Management API client has the " +
+                                    "'read:users' scope.",
+                                    user.Id, auth0Id);
+                            }
+                        }
+
+                        if (hasPlaceholderName)
+                        {
+                            // Same self-heal as the email: existing rows created before the
+                            // profile lookup existed show as "Unknown User", and this repairs
+                            // them on the owner's next login.
+                            var (profileFirst, profileLast) = profile?.SplitName() ?? (null, null);
+                            var resolvedFirst = jwtFirst ?? profileFirst;
+                            var resolvedLast = jwtLast ?? profileLast;
+
+                            _logger.LogInformation(
+                                "Auth0Sync: user {UserId} ({Auth0Id}) has placeholder name '{DbName}'. " +
+                                "Resolved: '{First} {Last}'.",
+                                user.Id, auth0Id, $"{user.FirstName} {user.LastName}".Trim(),
+                                resolvedFirst ?? "(none)", resolvedLast ?? "(none)");
+
+                            // Only overwrite with something real — never replace a known name
+                            // with a blank because Auth0 happened to omit the field.
+                            if (!string.IsNullOrWhiteSpace(resolvedFirst))
+                            {
+                                user.FirstName = resolvedFirst;
+                                changed = true;
+                            }
+                            if (!string.IsNullOrWhiteSpace(resolvedLast))
+                            {
+                                user.LastName = resolvedLast;
+                                changed = true;
+                            }
+
+                            if (!changed)
+                                _logger.LogWarning(
+                                    "Auth0Sync: could not resolve a real name for user {UserId} ({Auth0Id}); " +
+                                    "leaving placeholder in place.", user.Id, auth0Id);
+                        }
+
+                        if (changed)
+                        {
                             await userService.UpdateAsync(user);
                             _logger.LogInformation(
-                                "Auth0Sync: updated user {UserId} email to '{Email}'.",
-                                user.Id, realEmail);
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                "Auth0Sync: could not resolve a real email for user {UserId} ({Auth0Id}); " +
-                                "leaving placeholder in place. Check that the Management API client has the " +
-                                "'read:users' scope.",
-                                user.Id, auth0Id);
+                                "Auth0Sync: healed user {UserId} — email '{Email}', name '{Name}'.",
+                                user.Id, user.Email, $"{user.FirstName} {user.LastName}".Trim());
                         }
                     }
 
@@ -215,5 +279,27 @@ public class Auth0UserSyncMiddleware
         }
 
         await _next(context);
+    }
+
+    /// <summary>
+    /// True when the stored name is the auto-created placeholder rather than something the
+    /// user would recognise as their own. Covers blank fields and the literal
+    /// "Unknown"/"User" pair written by the auto-create path before the Auth0 profile
+    /// lookup existed. A user genuinely surnamed "User" with a real first name is not
+    /// matched, because both halves must look like placeholders.
+    /// </summary>
+    public static bool HasPlaceholderName(User user)
+    {
+        var first = user.FirstName?.Trim() ?? string.Empty;
+        var last = user.LastName?.Trim() ?? string.Empty;
+
+        if (first.Length == 0 && last.Length == 0) return true;
+
+        var firstIsPlaceholder = first.Length == 0
+            || first.Equals("Unknown", StringComparison.OrdinalIgnoreCase);
+        var lastIsPlaceholder = last.Length == 0
+            || last.Equals("User", StringComparison.OrdinalIgnoreCase);
+
+        return firstIsPlaceholder && lastIsPlaceholder;
     }
 }

@@ -70,6 +70,26 @@ public class ApiService : IApiService
         }
     }
 
+    // Returns the API's message so a failed approval explains itself rather than
+    // showing the admin a bare "failed".
+    public async Task<(bool Success, string Message)> ActivateUserAsync(Guid id)
+    {
+        try
+        {
+            var response = await _http.PostAsync($"api/users/{id}/activate", null);
+            if (response.IsSuccessStatusCode)
+                return (true, "User activated.");
+
+            var message = await ReadProblemDetailAsync(response);
+            return (false, message ?? "Failed to activate user.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Activate user failed");
+            return (false, ex.Message);
+        }
+    }
+
     // Returns the API's message so the admin sees WHY a permanent delete was refused
     // (e.g. physiotherapist has upcoming appointments, last admin, etc.).
     public async Task<(bool Success, string Message)> DeleteUserPermanentlyAsync(Guid id)

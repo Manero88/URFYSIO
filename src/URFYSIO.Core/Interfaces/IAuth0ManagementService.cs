@@ -18,6 +18,54 @@ public sealed record Auth0UserResult(string? UserId, bool AlreadyExists, string?
     public static Auth0UserResult Failed(string error) => new(null, false, error);
 }
 
+/// <summary>
+/// The subset of an Auth0 user profile the sync middleware needs. Social connections
+/// (Google, Microsoft) put the user's real name here but NOT in the API access token,
+/// so this lookup is the only way to learn it — without it every SSO sign-up lands in
+/// the database as "Unknown User".
+///
+/// Any field may be null: Auth0 omits <c>given_name</c>/<c>family_name</c> for some
+/// connections and only supplies the combined <c>name</c>, which is why
+/// <see cref="Auth0UserProfile.SplitName"/> exists.
+/// </summary>
+public sealed record Auth0UserProfile(
+    string? Email,
+    string? GivenName,
+    string? FamilyName,
+    string? Name,
+    string? Nickname)
+{
+    /// <summary>
+    /// Resolves a (first, last) pair from whatever Auth0 supplied, in preference order:
+    /// explicit given/family names → split the combined <c>name</c> on the last space →
+    /// nickname as a first name. Returns nulls when nothing usable is present so callers
+    /// can keep an existing value rather than overwrite it with a placeholder.
+    /// </summary>
+    public (string? First, string? Last) SplitName()
+    {
+        var given = Blank(GivenName) ? null : GivenName!.Trim();
+        var family = Blank(FamilyName) ? null : FamilyName!.Trim();
+        if (given is not null || family is not null)
+            return (given, family);
+
+        var full = Blank(Name) ? null : Name!.Trim();
+        if (full is not null)
+        {
+            // Split on the LAST space: "Anna Maria de Vries" → ("Anna Maria de", "Vries").
+            var idx = full.LastIndexOf(' ');
+            if (idx > 0)
+                return (full[..idx].Trim(), full[(idx + 1)..].Trim());
+            return (full, null);
+        }
+
+        // Auth0 falls back to the email local-part as the nickname for some connections.
+        // It's a poor last name but a reasonable first name, and far better than "Unknown".
+        return Blank(Nickname) ? (null, null) : (Nickname!.Trim(), null);
+    }
+
+    private static bool Blank(string? s) => string.IsNullOrWhiteSpace(s);
+}
+
 public interface IAuth0ManagementService
 {
     Task<bool> ChangePasswordAsync(string auth0UserId, string newPassword);
@@ -59,6 +107,16 @@ public interface IAuth0ManagementService
     /// learn what the user actually signed up with.
     /// </summary>
     Task<string?> GetUserEmailAsync(string auth0UserId);
+
+    /// <summary>
+    /// Fetches email AND name fields for an Auth0 user in a single Management API call.
+    /// Returns <c>null</c> if the user doesn't exist or the call fails. Used by the sync
+    /// middleware so social sign-ups (Google/Microsoft) get their real name captured —
+    /// access tokens carry neither <c>email</c> nor <c>given_name</c>, so without this a
+    /// first-time SSO user is stored as "Unknown User".
+    /// Requires the M2M app to have the <c>read:users</c> scope.
+    /// </summary>
+    Task<Auth0UserProfile?> GetUserProfileAsync(string auth0UserId);
 
     /// <summary>
     /// Assigns the named Auth0 role (e.g. "Admin", "Physiotherapist", "Client") to the user.

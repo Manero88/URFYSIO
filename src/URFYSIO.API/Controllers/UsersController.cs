@@ -199,6 +199,22 @@ public class UsersController : BaseApiController
     }
 
     /// <summary>
+    /// Approves an account by setting IsActive = true. This is the counterpart to
+    /// Deactivate and the approval path for self-service SSO sign-ups, which
+    /// Auth0UserSyncMiddleware auto-creates as inactive. Admin only.
+    /// </summary>
+    [HttpPost("{id:guid}/activate")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Activate(Guid id)
+    {
+        var result = await _userService.ActivateAsync(id);
+        if (!result) return NotFound();
+
+        var user = await _userService.GetByIdAsync(id);
+        return user is null ? NotFound() : Ok(user.ToDto());
+    }
+
+    /// <summary>
     /// GDPR right-to-erasure: permanently delete a user and ALL their data, including
     /// the Auth0 account. Irreversible — distinct from the soft Deactivate above.
     /// Admin only. An admin cannot delete their own account this way. Refusals

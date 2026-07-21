@@ -353,13 +353,18 @@ public class Auth0ManagementService : IAuth0ManagementService
         }
     }
 
-    public async Task<string?> GetUserEmailAsync(string auth0UserId)
+    // Kept as a thin wrapper so existing callers (registration approval) don't need to
+    // care about the name fields; both paths share one Management API round-trip shape.
+    public async Task<string?> GetUserEmailAsync(string auth0UserId) =>
+        (await GetUserProfileAsync(auth0UserId))?.Email;
+
+    public async Task<Auth0UserProfile?> GetUserProfileAsync(string auth0UserId)
     {
         var token = await GetManagementTokenAsync();
         if (token is null)
         {
             _logger.LogWarning(
-                "GetUserEmailAsync: management token unavailable for {User}. " +
+                "GetUserProfileAsync: management token unavailable for {User}. " +
                 "Check Auth0:ManagementClientId / ManagementClientSecret and that the M2M " +
                 "app is authorized for the Management API.", auth0UserId);
             return null;
@@ -373,8 +378,9 @@ public class Auth0ManagementService : IAuth0ManagementService
             // Auth0's user IDs contain a "|" (e.g. "auth0|abc123", "google-oauth2|123")
             // which MUST be URL-encoded for the path segment, otherwise the server returns
             // 404 because it sees the bar as a literal pipe character in the route.
-            var url = $"{_domain}/api/v2/users/{Uri.EscapeDataString(auth0UserId)}?fields=email&include_fields=true";
-            _logger.LogInformation("GetUserEmailAsync: GET {Url}", url);
+            const string fields = "email,given_name,family_name,name,nickname";
+            var url = $"{_domain}/api/v2/users/{Uri.EscapeDataString(auth0UserId)}?fields={fields}&include_fields=true";
+            _logger.LogInformation("GetUserProfileAsync: GET {Url}", url);
 
             var response = await client.GetAsync(url);
             var rawBody = await response.Content.ReadAsStringAsync();
@@ -388,20 +394,33 @@ public class Auth0ManagementService : IAuth0ManagementService
             }
 
             // Log the raw body so a successful-but-empty response (e.g. Auth0 omitted
-            // the email field) is distinguishable from an outright failure.
+            // the name fields) is distinguishable from an outright failure.
             _logger.LogInformation(
                 "Auth0 get user '{User}' succeeded: {Status}. Body: {Body}",
                 auth0UserId, response.StatusCode, rawBody);
 
-            var profile = JsonSerializer.Deserialize<UserEmailResponse>(rawBody);
-            var email = string.IsNullOrWhiteSpace(profile?.Email) ? null : profile.Email;
-            if (email is null)
+            var dto = JsonSerializer.Deserialize<UserProfileResponse>(rawBody);
+            if (dto is null)
+            {
+                _logger.LogWarning("Auth0 get user '{User}': response body did not deserialize.", auth0UserId);
+                return null;
+            }
+
+            var profile = new Auth0UserProfile(
+                string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email,
+                dto.GivenName,
+                dto.FamilyName,
+                dto.Name,
+                dto.Nickname);
+
+            if (profile.Email is null)
                 _logger.LogWarning("Auth0 get user '{User}': response carried no email field.", auth0UserId);
-            return email;
+
+            return profile;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "GetUserEmailAsync failed for {User}", auth0UserId);
+            _logger.LogError(ex, "GetUserProfileAsync failed for {User}", auth0UserId);
             return null;
         }
     }
@@ -555,10 +574,22 @@ public class Auth0ManagementService : IAuth0ManagementService
         public string? Description { get; set; }
     }
 
-    private sealed class UserEmailResponse
+    private sealed class UserProfileResponse
     {
         [JsonPropertyName("email")]
         public string? Email { get; set; }
+
+        [JsonPropertyName("given_name")]
+        public string? GivenName { get; set; }
+
+        [JsonPropertyName("family_name")]
+        public string? FamilyName { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("nickname")]
+        public string? Nickname { get; set; }
     }
 
     private sealed class CreateUserResponse

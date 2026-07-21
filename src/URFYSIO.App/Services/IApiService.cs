@@ -16,6 +16,12 @@ public interface IApiService
     Task<UserDto?> CreateUserAsync(CreateUserDto dto);
     Task<UserDto?> UpdateUserAsync(Guid id, UpdateUserDto dto);
     Task<bool> DeactivateUserAsync(Guid id);
+
+    /// <summary>
+    /// Approves an account (IsActive = true). Used for SSO sign-ups, which are
+    /// auto-created inactive and can't log in until an admin approves them.
+    /// </summary>
+    Task<(bool Success, string Message)> ActivateUserAsync(Guid id);
     Task<(bool Success, string Message)> DeleteUserPermanentlyAsync(Guid id);
     Task<UserProfileDto?> GetMyProfileAsync();
     Task<UserProfileDto?> UpdateMyProfileAsync(UpdateUserProfileDto dto);

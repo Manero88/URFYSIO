@@ -60,7 +60,7 @@ public class RegistrationServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_WithDuplicateEmail_ThrowsDomainException()
+    public async Task CreateAsync_WithDuplicateEmailOnActiveAccount_TellsThemToLogIn()
     {
         var (service, db, _) = CreateService();
         using (db)
@@ -69,7 +69,7 @@ public class RegistrationServiceTests
             {
                 Id = Guid.NewGuid(), Email = "existing@example.com",
                 FirstName = "A", LastName = "B", Role = UserRole.Client,
-                PasswordHash = "", CreatedAt = DateTime.UtcNow
+                PasswordHash = "", CreatedAt = DateTime.UtcNow, IsActive = true
             });
             await db.SaveChangesAsync();
 
@@ -81,7 +81,38 @@ public class RegistrationServiceTests
 
             var ex = await Assert.ThrowsAsync<DomainException>(() => service.CreateAsync(request));
             Assert.Equal(409, ex.StatusCode);
-            Assert.Contains("already exists", ex.Message);
+            // The message is shown verbatim to the registrant, so it must point them
+            // somewhere useful rather than just reporting a collision.
+            Assert.Contains("already registered", ex.Message);
+            Assert.Contains("log in", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithDuplicateEmailOnInactiveAccount_MentionsPendingActivation()
+    {
+        var (service, db, _) = CreateService();
+        using (db)
+        {
+            // An SSO sign-up awaiting admin approval. Telling this person "already
+            // registered, please log in" would be a dead end — they can't log in yet.
+            db.Users.Add(new User
+            {
+                Id = Guid.NewGuid(), Email = "pending@example.com",
+                FirstName = "A", LastName = "B", Role = UserRole.Client,
+                PasswordHash = "", CreatedAt = DateTime.UtcNow, IsActive = false
+            });
+            await db.SaveChangesAsync();
+
+            var request = new RegistrationRequest
+            {
+                FirstName = "C", LastName = "D",
+                Email = "pending@example.com", PhoneNumber = "06"
+            };
+
+            var ex = await Assert.ThrowsAsync<DomainException>(() => service.CreateAsync(request));
+            Assert.Equal(409, ex.StatusCode);
+            Assert.Contains("pending activation", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
     }
 

@@ -155,6 +155,23 @@ public class UserService : IUserService
         return true;
     }
 
+    public async Task<bool> ActivateAsync(Guid id)
+    {
+        var user = await _db.Users
+            .Include(u => u.ClientProfile)
+            .Include(u => u.PhysiotherapistProfile)
+            .FirstOrDefaultAsync(u => u.Id == id);
+        if (user is null) return false;
+
+        user.IsActive = true;
+        // SSO users are auto-created through the sync middleware; make sure the profile
+        // matching their role exists before they can act, so approval alone is enough to
+        // make the account fully usable.
+        AddMissingProfileForRole(user);
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<User?> ValidateCredentialsAsync(string email, string password)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email && u.IsActive);

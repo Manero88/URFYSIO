@@ -14,8 +14,25 @@ public class UserDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public string AuthProvider { get; set; } = string.Empty;
-    public string FullName => $"{FirstName} {LastName}";
+
+    /// <summary>
+    /// Trimmed so a user with only one name part doesn't yield a stray leading/trailing
+    /// space. This is load-bearing for the admin's type-to-confirm delete: it compares the
+    /// typed text against FullName, and an untrimmed "Unknown " could never be matched by
+    /// anything the admin typed — making such accounts undeletable.
+    /// </summary>
+    public string FullName => $"{FirstName} {LastName}".Trim();
     public bool IsEmailPasswordUser => string.Equals(AuthProvider, "email", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Human-readable sign-up source, e.g. "Google", for the admin's pending list.</summary>
+    public string AuthProviderLabel => AuthProvider?.ToLowerInvariant() switch
+    {
+        "email" => "Email / password",
+        "google" => "Google",
+        "microsoft" => "Microsoft",
+        "local" => "Created by admin",
+        _ => "External provider"
+    };
 }
 
 public class CreateUserDto

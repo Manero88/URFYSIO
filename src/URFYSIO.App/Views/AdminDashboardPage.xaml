@@ -134,6 +134,10 @@
                                         <FormattedString>
                                             <Span Text="Registered: " />
                                             <Span Text="{Binding CreatedAt, StringFormat='{0:dd/MM/yyyy}'}" />
+                                            <!-- Throttled server-side, so this is "last active", not a strict
+                                                 login stamp. LastLoginDisplay renders local time or "Never". -->
+                                            <Span Text="  |  Last active: " />
+                                            <Span Text="{Binding LastLoginDisplay}" />
                                             <Span Text="  |  Profile: " />
                                             <Span Text="{Binding ProfileId, StringFormat='{0}'}" />
                                         </FormattedString>

@@ -68,4 +68,39 @@ public class UserDtoTests
         Assert.True(User("A", "B", "email").IsEmailPasswordUser);
         Assert.False(User("A", "B", "google").IsEmailPasswordUser);
     }
+
+    [Fact]
+    public void LastLoginDisplay_NeverSeen_ShowsNever()
+    {
+        var dto = User("A", "B");
+        dto.LastLoginAt = null;
+        Assert.Equal("Never", dto.LastLoginDisplay);
+    }
+
+    [Fact]
+    public void LastLoginDisplay_UsesAppDateFormatInLocalTime()
+    {
+        var utc = new DateTime(2026, 7, 21, 10, 30, 0, DateTimeKind.Utc);
+        var dto = User("A", "B");
+        dto.LastLoginAt = utc;
+
+        // Stored UTC is rendered in the viewer's zone — a raw UTC stamp would read
+        // an hour or two off for a practice in the Netherlands.
+        var expected = utc.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+        Assert.Equal(expected, dto.LastLoginDisplay);
+    }
+
+    [Fact]
+    public void LastLoginDisplay_TreatsUnspecifiedKindAsUtc()
+    {
+        // EF materialises DateTime columns as Unspecified; without SpecifyKind the
+        // conversion would silently treat the value as already-local and skip the offset.
+        var unspecified = new DateTime(2026, 7, 21, 10, 30, 0, DateTimeKind.Unspecified);
+        var dto = User("A", "B");
+        dto.LastLoginAt = unspecified;
+
+        var expected = DateTime.SpecifyKind(unspecified, DateTimeKind.Utc)
+            .ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+        Assert.Equal(expected, dto.LastLoginDisplay);
+    }
 }

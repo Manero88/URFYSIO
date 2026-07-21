@@ -115,6 +115,9 @@ public class Auth0UserSyncMiddleware
                         LastName = lastName,
                         Role = role,
                         PasswordHash = string.Empty,
+                        // Stamped at creation so the very first request doesn't
+                        // immediately trigger a second write from the throttle below.
+                        LastLoginAt = DateTime.UtcNow,
                         // Auto-created accounts (someone logging in via Auth0 — Google,
                         // Microsoft, or a fresh email/password signup — with no prior
                         // local record) start INACTIVE. They must be approved by an
@@ -252,6 +255,17 @@ public class Auth0UserSyncMiddleware
                     }
                 }
 
+                // Record activity, throttled. Writing on every authenticated request would
+                // add a DB round-trip to each call for a value nobody needs to the second;
+                // at one write per LastActiveThrottle window the admin still gets a useful
+                // "last active" reading. Newly created users were stamped above, so this
+                // is a no-op for them.
+                if (ShouldUpdateLastActive(user.LastLoginAt, DateTime.UtcNow))
+                {
+                    user.LastLoginAt = DateTime.UtcNow;
+                    await userService.UpdateAsync(user);
+                }
+
                 // Replace the authenticated principal with one whose role claims reflect
                 // the *current DB* role. We strip two kinds of stale claims:
                 //   - "https://urfysio.nl/roles" (Auth0 Action injects this)
@@ -279,6 +293,26 @@ public class Auth0UserSyncMiddleware
         }
 
         await _next(context);
+    }
+
+    /// <summary>
+    /// How stale <c>User.LastLoginAt</c> must be before it's worth another write. Chosen to
+    /// keep the value meaningful as a "last active" reading while costing at most one write
+    /// per user per window, instead of one per authenticated request.
+    /// </summary>
+    public static readonly TimeSpan LastActiveThrottle = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// True when activity should be persisted: the user has never been recorded, or the
+    /// stored stamp is older than <see cref="LastActiveThrottle"/>.
+    /// A stamp in the future (clock skew, or a row edited by hand) also refreshes, so a bad
+    /// value can't freeze the field forever.
+    /// </summary>
+    public static bool ShouldUpdateLastActive(DateTime? lastLoginAt, DateTime utcNow)
+    {
+        if (lastLoginAt is null) return true;
+        var elapsed = utcNow - lastLoginAt.Value;
+        return elapsed >= LastActiveThrottle || elapsed < TimeSpan.Zero;
     }
 
     /// <summary>

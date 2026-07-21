@@ -21,6 +21,7 @@ public static class MappingExtensions
         Role = (SharedEnums.UserRole)(int)user.Role,
         IsActive = user.IsActive,
         CreatedAt = user.CreatedAt,
+        LastLoginAt = user.LastLoginAt,
         // ProfileId must match the user's CURRENT role — otherwise a user who was
         // promoted from Client to Physiotherapist would still report their stale
         // ClientProfile.Id, which the app then sends as PhysiotherapistProfileId and

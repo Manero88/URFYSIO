@@ -13,6 +13,13 @@ public class UserDto
     public UserRole Role { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Last authenticated activity (UTC), throttled server-side to roughly quarter-hour
+    /// granularity. Null means the account hasn't been seen since the field was introduced.
+    /// </summary>
+    public DateTime? LastLoginAt { get; set; }
+
     public string AuthProvider { get; set; } = string.Empty;
 
     /// <summary>
@@ -23,6 +30,17 @@ public class UserDto
     /// </summary>
     public string FullName => $"{FirstName} {LastName}".Trim();
     public bool IsEmailPasswordUser => string.Equals(AuthProvider, "email", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// "Last active" rendered for the admin list, in the app's usual dd/MM/yyyy HH:mm form.
+    /// Converted from the stored UTC to the viewer's local time — showing a raw UTC stamp
+    /// would read as an hour or two off for a practice in the Netherlands.
+    /// </summary>
+    public string LastLoginDisplay => LastLoginAt is null
+        ? "Never"
+        : DateTime.SpecifyKind(LastLoginAt.Value, DateTimeKind.Utc)
+            .ToLocalTime()
+            .ToString("dd/MM/yyyy HH:mm");
 
     /// <summary>Human-readable sign-up source, e.g. "Google", for the admin's pending list.</summary>
     public string AuthProviderLabel => AuthProvider?.ToLowerInvariant() switch

@@ -134,7 +134,10 @@ public class Auth0UserSyncMiddlewareTests
             LastName = "User",
             Email = $"{GoogleId}@auth0.local",
             Role = UserRole.Client,
-            IsActive = true
+            IsActive = true,
+            // Recent, so the last-active throttle stays inert and the only write this
+            // test can observe is the name/email heal it is actually about.
+            LastLoginAt = DateTime.UtcNow
         };
 
         var auth0 = new Mock<IAuth0ManagementService>();
@@ -165,6 +168,9 @@ public class Auth0UserSyncMiddlewareTests
             Email = "karin@gmail.com",
             Role = UserRole.Client,
             IsActive = true,
+            // Recent, so the last-active throttle doesn't write and "is not touched"
+            // means what it says here.
+            LastLoginAt = DateTime.UtcNow,
             ClientProfile = new ClientProfile { Id = Guid.NewGuid() }
         };
 
@@ -191,6 +197,8 @@ public class Auth0UserSyncMiddlewareTests
             Email = "real@example.com", // email already healed; only the name is a placeholder
             Role = UserRole.Client,
             IsActive = true,
+            // Recent, so the last-active throttle contributes no write of its own.
+            LastLoginAt = DateTime.UtcNow,
             ClientProfile = new ClientProfile { Id = Guid.NewGuid() }
         };
 

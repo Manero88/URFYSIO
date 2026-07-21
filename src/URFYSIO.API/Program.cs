@@ -14,6 +14,15 @@ using URFYSIO.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ---- Logging ----
+// Routes ILogger output to the App Service log stream and /LogFiles/Application.
+// Without this, application logs are invisible on Azure: the platform sets
+// ASPNETCORE_HOSTINGSTARTUPASSEMBLIES to Microsoft.AspNetCore.AzureAppServices.HostingStartup,
+// but if that assembly isn't deployed the hosting startup throws FileNotFoundException and
+// the logging integration never loads — so "az webapp log tail" shows no traces at all and
+// a startup crash is only recoverable from the Windows event log.
+builder.Logging.AddAzureWebAppDiagnostics();
+
 // ---- Database ----
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(

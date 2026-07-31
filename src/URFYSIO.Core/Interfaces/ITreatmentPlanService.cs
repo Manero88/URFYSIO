@@ -31,5 +31,18 @@ public interface ITreatmentPlanService
 
     // --- Comments ---
     Task<IReadOnlyList<TreatmentPlanEntryComment>> GetCommentsForEntryAsync(Guid entryId);
-    Task<TreatmentPlanEntryComment> AddCommentAsync(Guid entryId, Guid userId, string text);
+    /// <summary>
+    /// Adds a comment, optionally with an already-uploaded photo. The caller uploads to
+    /// blob storage first and passes the resulting blob name — this method only persists
+    /// the reference, so the service layer stays free of storage concerns.
+    /// </summary>
+    Task<TreatmentPlanEntryComment> AddCommentAsync(
+        Guid entryId, Guid userId, string text, string? photoBlobName = null);
+
+    /// <summary>
+    /// Blob names for every photo attached to comments on the given entries. Used before
+    /// deleting entries/plans so the corresponding blobs can be cleaned up rather than
+    /// orphaned in storage.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetCommentPhotoBlobNamesForEntriesAsync(IEnumerable<Guid> entryIds);
 }

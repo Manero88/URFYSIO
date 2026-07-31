@@ -67,6 +67,8 @@ public static class MauiProgram
         // --- Services ---
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IAppointmentReminderService, AppointmentReminderService>();
+        // Camera / gallery access for photo attachments on treatment-plan comments.
+        builder.Services.AddSingleton<IPhotoPickerService, PhotoPickerService>();
 
         // --- ViewModels ---
         builder.Services.AddSingleton<AppShellViewModel>();

@@ -7,4 +7,12 @@
 	<!-- Local appointment reminders (Plugin.LocalNotification). POST_NOTIFICATIONS is the
 	     Android 13+ runtime permission; the plugin contributes the scheduling/boot receivers. -->
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<!-- Photo attachments on treatment-plan comments (User Story 5). CAMERA is requested
+	     at runtime by PhotoPickerService; declaring the feature as not-required keeps the
+	     app installable on camera-less devices, where the UI hides "Take photo" and only
+	     offers the gallery. Reading from the gallery needs no permission: the system picker
+	     runs out-of-process and hands back only the single item the user chose. -->
+	<uses-permission android:name="android.permission.CAMERA" />
+	<uses-feature android:name="android.hardware.camera" android:required="false" />
+	<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 </manifest>

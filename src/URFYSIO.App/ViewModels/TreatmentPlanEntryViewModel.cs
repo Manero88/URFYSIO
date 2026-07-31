@@ -26,6 +26,7 @@ public partial class TreatmentPlanEntryViewModel : ObservableObject
     public const int MaxCommentLength = 1000;
 
     private readonly IApiService _api;
+    private readonly IPhotoPickerService _photoPicker;
     public TreatmentPlanEntryDto Dto { get; }
 
     // Proxied entry properties — XAML binds to these by name. We don't surface the
@@ -49,10 +50,36 @@ public partial class TreatmentPlanEntryViewModel : ObservableObject
     [ObservableProperty] private string _newCommentText = string.Empty;
     [ObservableProperty] private string? _commentsError;
 
-    // Drives whether the inline "Add comment" Post button is enabled: must be
-    // non-empty AND within the length limit.
+    /// <summary>True while a comment is being posted — drives the spinner and blocks double-submits.</summary>
+    [ObservableProperty] private bool _isPostingComment;
+
+    /// <summary>
+    /// The photo staged for the next comment, if any. Held until the post succeeds so a
+    /// failed upload doesn't make the user pick it again.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedPhoto))]
+    [NotifyPropertyChangedFor(nameof(SelectedPhotoPreview))]
+    [NotifyPropertyChangedFor(nameof(CanSubmitComment))]
+    private PickedPhoto? _selectedPhoto;
+
+    public bool HasSelectedPhoto => SelectedPhoto is not null;
+
+    /// <summary>Thumbnail for the staged photo. Rebuilt from the in-memory bytes on each read so the source is never a spent stream.</summary>
+    public ImageSource? SelectedPhotoPreview => SelectedPhoto is null
+        ? null
+        : ImageSource.FromStream(() => SelectedPhoto.OpenStream());
+
+    /// <summary>True when the device has a camera, so the UI can hide "Take photo" rather than offer a dead option.</summary>
+    public bool IsCaptureSupported => _photoPicker.IsCaptureSupported;
+
+    // Drives whether the inline "Add comment" Post button is enabled. A photo on its own is
+    // a valid comment ("here's how it looks today"), so either text or a photo will do —
+    // the API applies the same rule.
     public bool CanSubmitComment =>
-        !string.IsNullOrWhiteSpace(NewCommentText) && !IsCommentTooLong;
+        (!string.IsNullOrWhiteSpace(NewCommentText) || HasSelectedPhoto)
+        && !IsCommentTooLong
+        && !IsPostingComment;
 
     public bool IsCommentTooLong => (NewCommentText?.Length ?? 0) > MaxCommentLength;
 
@@ -73,12 +100,16 @@ public partial class TreatmentPlanEntryViewModel : ObservableObject
 
     public string ChevronGlyph => IsCommentsExpanded ? "▾" : "▸";
 
-    public TreatmentPlanEntryViewModel(TreatmentPlanEntryDto dto, IApiService api)
+    public TreatmentPlanEntryViewModel(
+        TreatmentPlanEntryDto dto, IApiService api, IPhotoPickerService photoPicker)
     {
         Dto = dto;
         _api = api;
+        _photoPicker = photoPicker;
         Comments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CommentCountLabel));
     }
+
+    partial void OnIsPostingCommentChanged(bool value) => OnPropertyChanged(nameof(CanSubmitComment));
 
     partial void OnNewCommentTextChanged(string value)
     {
@@ -119,11 +150,94 @@ public partial class TreatmentPlanEntryViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Offers the camera / gallery choice, then stages the chosen photo. Split from
+    /// <see cref="TakePhotoAsync"/> and <see cref="ChoosePhotoAsync"/> so the actual
+    /// picking logic stays reachable (and testable) without the Shell action sheet.
+    /// </summary>
+    [RelayCommand]
+    private async Task AddPhotoAsync()
+    {
+        // With no camera there is only one option — go straight to the gallery rather
+        // than showing a one-item menu.
+        if (!_photoPicker.IsCaptureSupported)
+        {
+            await ChoosePhotoAsync();
+            return;
+        }
+
+        var choice = await Shell.Current.DisplayActionSheetAsync(
+            "Add photo", "Cancel", null, "Take photo", "Choose from gallery");
+
+        switch (choice)
+        {
+            case "Take photo": await TakePhotoAsync(); break;
+            case "Choose from gallery": await ChoosePhotoAsync(); break;
+        }
+    }
+
+    [RelayCommand]
+    private async Task TakePhotoAsync() => Apply(await _photoPicker.CapturePhotoAsync());
+
+    [RelayCommand]
+    private async Task ChoosePhotoAsync() => Apply(await _photoPicker.PickPhotoAsync());
+
+    /// <summary>
+    /// Applies a pick result. A plain cancel leaves everything untouched and shows nothing;
+    /// only a real failure (permission denied, unreadable file) produces a message.
+    /// </summary>
+    private void Apply(PhotoPickResult result)
+    {
+        if (result.Photo is not null)
+        {
+            SelectedPhoto = result.Photo;
+            CommentsError = null;
+            // Reveal the composer, otherwise the thumbnail lands in a collapsed panel.
+            IsCommentsExpanded = true;
+        }
+        else if (result.Error is not null)
+        {
+            CommentsError = result.Error;
+        }
+    }
+
+    [RelayCommand]
+    private void RemovePhoto()
+    {
+        SelectedPhoto = null;
+        CommentsError = null;
+    }
+
+    /// <summary>
+    /// Opens an already-posted comment photo full-screen. The URL is the SAS minted when
+    /// the thread was loaded; if it has since expired the viewer shows a "reopen the
+    /// comments" message rather than a blank screen.
+    /// </summary>
+    [RelayCommand]
+    private async Task ViewPhotoAsync(string? photoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(photoUrl)) return;
+
+        try
+        {
+            await Shell.Current.Navigation.PushModalAsync(new Views.PhotoViewerPage(photoUrl));
+        }
+        catch (Exception ex)
+        {
+            CommentsError = $"Could not open the photo: {ex.Message}";
+        }
+    }
+
     [RelayCommand]
     private async Task AddCommentAsync()
     {
-        var text = NewCommentText?.Trim();
-        if (string.IsNullOrEmpty(text)) return;
+        if (IsPostingComment) return;
+
+        var text = NewCommentText?.Trim() ?? string.Empty;
+        var photo = SelectedPhoto;
+
+        // A photo alone is a valid comment; only reject when there's nothing at all.
+        if (string.IsNullOrEmpty(text) && photo is null) return;
 
         // Client-side length guard — instant feedback, no wasted round-trip.
         if (text.Length > MaxCommentLength)
@@ -135,12 +249,20 @@ public partial class TreatmentPlanEntryViewModel : ObservableObject
 
         try
         {
+            IsPostingComment = true;
             CommentsError = null;
-            var (added, error) = await _api.AddEntryCommentAsync(Id, text);
+
+            // PickedPhoto holds bytes, so this stream is fresh on every attempt — a retry
+            // after a failed upload works without re-picking the photo.
+            using var photoStream = photo?.OpenStream();
+            var (added, error) = await _api.AddEntryCommentAsync(Id, text, photoStream, photo?.ContentType);
+
             if (added is not null)
             {
                 Comments.Add(added);
+                // Only clear the draft once the post actually succeeded.
                 NewCommentText = string.Empty;
+                SelectedPhoto = null;
                 HasLoadedComments = true;
                 // Make sure the thread is visible after posting — otherwise the user
                 // would post and see nothing because the panel is still collapsed.
@@ -149,7 +271,8 @@ public partial class TreatmentPlanEntryViewModel : ObservableObject
             else
             {
                 // Surface the API's actual ProblemDetails message (validation reason,
-                // forbidden, etc.) rather than a generic fallback.
+                // forbidden, etc.) rather than a generic fallback. The typed text and the
+                // staged photo are both left in place so the user can simply retry.
                 CommentsError = string.IsNullOrWhiteSpace(error)
                     ? "Failed to add comment."
                     : error;
@@ -158,6 +281,10 @@ public partial class TreatmentPlanEntryViewModel : ObservableObject
         catch (Exception ex)
         {
             CommentsError = $"Failed to add comment: {ex.Message}";
+        }
+        finally
+        {
+            IsPostingComment = false;
         }
     }
 }

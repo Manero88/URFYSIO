@@ -310,13 +310,48 @@ public class ApiService : IApiService
     public async Task<List<TreatmentPlanEntryCommentDto>> GetEntryCommentsAsync(Guid entryId) =>
         await SafeGetListAsync<TreatmentPlanEntryCommentDto>($"api/treatmentplans/entries/{entryId}/comments");
 
-    // Uses the error-extracting variant so the UI can show the API's actual
-    // ProblemDetails message (e.g. "Comment text cannot exceed 1000 characters")
-    // instead of a generic "Failed to add comment".
-    public async Task<(TreatmentPlanEntryCommentDto? Comment, string? Error)> AddEntryCommentAsync(Guid entryId, string text) =>
-        await SafePostWithErrorAsync<TreatmentPlanEntryCommentDto>(
-            $"api/treatmentplans/entries/{entryId}/comments",
-            new CreateTreatmentPlanEntryCommentDto { Text = text });
+    /// <summary>
+    /// Posts a comment, optionally with a photo. Always multipart/form-data — the API takes
+    /// one form-bound endpoint for both cases, so there is a single path to reason about
+    /// whether or not a photo is attached.
+    ///
+    /// Returns the API's ProblemDetails message on failure (e.g. "Only JPEG and PNG images
+    /// can be attached") so the composer can show the real reason rather than a generic
+    /// "failed", and so the user's typed text is never discarded over a bad photo.
+    /// </summary>
+    public async Task<(TreatmentPlanEntryCommentDto? Comment, string? Error)> AddEntryCommentAsync(
+        Guid entryId, string text, Stream? photoStream = null, string? photoContentType = null)
+    {
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(text ?? string.Empty), "text");
+
+            if (photoStream is not null)
+            {
+                var photoContent = new StreamContent(photoStream);
+                photoContent.Headers.ContentType =
+                    new System.Net.Http.Headers.MediaTypeHeaderValue(photoContentType ?? "image/jpeg");
+                // The field name must match the IFormFile parameter ("photo") on the API.
+                // A filename is required for ASP.NET Core to bind the part as a file at all.
+                form.Add(photoContent, "photo", "photo.jpg");
+            }
+
+            var response = await _http.PostAsync($"api/treatmentplans/entries/{entryId}/comments", form);
+
+            if (response.IsSuccessStatusCode)
+                return (await response.Content.ReadFromJsonAsync<TreatmentPlanEntryCommentDto>(), null);
+
+            var error = await ReadProblemDetailAsync(response);
+            _logger.LogWarning("Add entry comment failed with {Status}: {Error}", response.StatusCode, error);
+            return (null, error ?? $"Failed to add comment ({(int)response.StatusCode}).");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Add entry comment failed");
+            return (null, ex.Message);
+        }
+    }
 
     // --- Registration ---
     // Uses SafePostWithErrorAsync so the API's ProblemDetails.detail (e.g. "This email

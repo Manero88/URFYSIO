@@ -156,7 +156,8 @@ public class TreatmentPlanService : ITreatmentPlanService
             .OrderBy(c => c.CreatedAt)
             .ToListAsync();
 
-    public async Task<TreatmentPlanEntryComment> AddCommentAsync(Guid entryId, Guid userId, string text)
+    public async Task<TreatmentPlanEntryComment> AddCommentAsync(
+        Guid entryId, Guid userId, string text, string? photoBlobName = null)
     {
         // Verify the entry exists — without this we'd accept comments referencing
         // deleted entries and the FK constraint would surface as a generic 500 instead
@@ -164,9 +165,12 @@ public class TreatmentPlanService : ITreatmentPlanService
         var entry = await _db.TreatmentPlanEntries.FindAsync(entryId)
             ?? throw DomainException.NotFound("Treatment plan entry not found.");
 
-        if (string.IsNullOrWhiteSpace(text))
+        // A photo on its own is a valid contribution ("here's how it looks today"), so
+        // text is only mandatory when there's no photo to carry the comment.
+        var hasPhoto = !string.IsNullOrWhiteSpace(photoBlobName);
+        if (string.IsNullOrWhiteSpace(text) && !hasPhoto)
             throw DomainException.Validation("Comment text is required.");
-        if (text.Length > 1000)
+        if (text is { Length: > 1000 })
             throw DomainException.Validation("Comment text cannot exceed 1000 characters.");
 
         var comment = new TreatmentPlanEntryComment
@@ -174,7 +178,8 @@ public class TreatmentPlanService : ITreatmentPlanService
             Id = Guid.NewGuid(),
             TreatmentPlanEntryId = entryId,
             UserId = userId,
-            Text = text.Trim(),
+            Text = text?.Trim() ?? string.Empty,
+            PhotoBlobName = hasPhoto ? photoBlobName : null,
             CreatedAt = DateTime.UtcNow
         };
         _db.TreatmentPlanEntryComments.Add(comment);
@@ -185,5 +190,16 @@ public class TreatmentPlanService : ITreatmentPlanService
         return await _db.TreatmentPlanEntryComments
             .Include(c => c.User)
             .FirstAsync(c => c.Id == comment.Id);
+    }
+
+    public async Task<IReadOnlyList<string>> GetCommentPhotoBlobNamesForEntriesAsync(IEnumerable<Guid> entryIds)
+    {
+        var ids = entryIds.Distinct().ToList();
+        if (ids.Count == 0) return [];
+
+        return await _db.TreatmentPlanEntryComments
+            .Where(c => ids.Contains(c.TreatmentPlanEntryId) && c.PhotoBlobName != null)
+            .Select(c => c.PhotoBlobName!)
+            .ToListAsync();
     }
 }

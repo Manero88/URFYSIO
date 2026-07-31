@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using URFYSIO.API.Mapping;
 using URFYSIO.Core.Entities;
+using URFYSIO.Core.Exceptions;
 using URFYSIO.Core.Interfaces;
 using URFYSIO.Shared.DTOs.TreatmentPlans;
+using URFYSIO.Shared.Photos;
 
 namespace URFYSIO.API.Controllers;
 
@@ -14,11 +16,19 @@ public class TreatmentPlansController : BaseApiController
 {
     private readonly ITreatmentPlanService _planService;
     private readonly IUserService _userService;
+    private readonly IBlobStorageService _blobStorage;
+    private readonly ILogger<TreatmentPlansController> _logger;
 
-    public TreatmentPlansController(ITreatmentPlanService planService, IUserService userService)
+    public TreatmentPlansController(
+        ITreatmentPlanService planService,
+        IUserService userService,
+        IBlobStorageService blobStorage,
+        ILogger<TreatmentPlansController> logger)
     {
         _planService = planService;
         _userService = userService;
+        _blobStorage = blobStorage;
+        _logger = logger;
     }
 
     [HttpGet("{id:guid}")]
@@ -225,8 +235,27 @@ public class TreatmentPlansController : BaseApiController
                 return Forbidden();
         }
 
+        // Comments cascade-delete with the entry, so collect their photos first —
+        // afterwards there is no row left pointing at the blobs.
+        var photoBlobNames = await _planService.GetCommentPhotoBlobNamesForEntriesAsync([entryId]);
+
         var result = await _planService.DeleteEntryAsync(entryId);
-        return result ? NoContent() : NotFound();
+        if (!result) return NotFound();
+
+        foreach (var blobName in photoBlobNames)
+        {
+            // Best-effort: the entry is already gone, so a storage failure must not turn
+            // a successful delete into an error for the physio.
+            try { await _blobStorage.DeletePhotoAsync(blobName); }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Entry {EntryId} was deleted but its comment photo {BlobName} could not be " +
+                    "removed from storage. Manual cleanup is required.", entryId, blobName);
+            }
+        }
+
+        return NoContent();
     }
 
     // --- Entry comments ---
@@ -240,24 +269,94 @@ public class TreatmentPlansController : BaseApiController
         if (!await CanReadEntryAsync(entry)) return Forbidden();
 
         var comments = await _planService.GetCommentsForEntryAsync(entryId);
-        return Ok(comments.Select(c => c.ToDto()));
+
+        var dtos = new List<TreatmentPlanEntryCommentDto>(comments.Count);
+        foreach (var c in comments)
+            dtos.Add(await ToDtoWithPhotoAsync(c));
+
+        return Ok(dtos);
     }
 
+    /// <summary>
+    /// Adds a comment, optionally with a photo (User Story 5 — patients giving feedback
+    /// with images). Accepts multipart/form-data so text and file arrive together; the
+    /// photo is optional, and a text-only comment is still the common case.
+    /// </summary>
     [HttpPost("entries/{entryId:guid}/comments")]
+    [RequestSizeLimit(PhotoRules.MaxBytes + 1024 * 1024)] // photo allowance + room for the form itself
     public async Task<IActionResult> AddEntryComment(
         Guid entryId,
-        [FromBody] CreateTreatmentPlanEntryCommentDto dto)
+        [FromForm] string? text,
+        IFormFile? photo)
     {
         var entry = await _planService.GetEntryByIdAsync(entryId);
         if (entry is null) return NotFound();
 
+        // Same rule as reading the thread: client on their own plans, physio on plans
+        // they own, admin anywhere. Both sides may attach photos.
         if (!await CanReadEntryAsync(entry)) return Forbidden();
 
         var userId = GetCurrentUserId();
         if (!userId.HasValue) return Unauthorized();
 
-        var comment = await _planService.AddCommentAsync(entryId, userId.Value, dto.Text);
-        return Created($"api/treatmentplans/entries/{entryId}/comments/{comment.Id}", comment.ToDto());
+        string? blobName = null;
+        if (photo is not null && photo.Length > 0)
+        {
+            // Validate BEFORE touching storage so a bad upload costs nothing.
+            var validationError = PhotoRules.Validate(photo.ContentType, photo.Length);
+            if (validationError is not null)
+                throw DomainException.Validation(validationError);
+
+            await using var stream = photo.OpenReadStream();
+            blobName = await _blobStorage.UploadPhotoAsync(stream, photo.ContentType, HttpContext.RequestAborted);
+        }
+
+        try
+        {
+            var comment = await _planService.AddCommentAsync(entryId, userId.Value, text ?? string.Empty, blobName);
+            return Created(
+                $"api/treatmentplans/entries/{entryId}/comments/{comment.Id}",
+                await ToDtoWithPhotoAsync(comment));
+        }
+        catch
+        {
+            // The photo made it to storage but the comment row didn't. Without this the
+            // blob would linger forever with nothing referencing it.
+            if (blobName is not null)
+            {
+                try { await _blobStorage.DeletePhotoAsync(blobName); }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogError(cleanupEx,
+                        "Failed to clean up orphaned photo {BlobName} after the comment insert failed.", blobName);
+                }
+            }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Maps a comment and mints a fresh SAS URL for its photo. A storage failure degrades
+    /// to a photo-less comment rather than failing the whole thread — the text is the more
+    /// important half, and one unreadable blob shouldn't blank the conversation.
+    /// </summary>
+    private async Task<TreatmentPlanEntryCommentDto> ToDtoWithPhotoAsync(TreatmentPlanEntryComment comment)
+    {
+        var dto = comment.ToDto();
+        if (string.IsNullOrEmpty(comment.PhotoBlobName)) return dto;
+
+        try
+        {
+            dto.PhotoUrl = await _blobStorage.GetPhotoSasUrlAsync(comment.PhotoBlobName, HttpContext.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Could not generate a photo URL for comment {CommentId} (blob {BlobName}); " +
+                "returning the comment without its photo.", comment.Id, comment.PhotoBlobName);
+        }
+
+        return dto;
     }
 
     /// <summary>

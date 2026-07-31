@@ -140,6 +140,9 @@ public class AppDbContext : DbContext
              .HasForeignKey(c => c.UserId)
              .OnDelete(DeleteBehavior.Restrict);
             e.Property(c => c.Text).HasMaxLength(1000).IsRequired();
+            // Generated blob names are 32 hex chars + extension; 256 leaves room without
+            // letting an unbounded string into the table.
+            e.Property(c => c.PhotoBlobName).HasMaxLength(256);
         });
 
         // RegistrationRequest

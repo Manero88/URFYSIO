@@ -74,6 +74,17 @@ public class TreatmentPlanEntryCommentDto
     public string AuthorName { get; set; } = string.Empty;
     public string AuthorRole { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Short-lived SAS URL for the attached photo, or null when there is no photo (or when
+    /// the URL could not be minted). Generated per response — never stored — because the
+    /// blob container is private. Treat it as valid for about an hour: re-fetch the thread
+    /// rather than caching this value long-term.
+    /// </summary>
+    public string? PhotoUrl { get; set; }
+
+    /// <summary>Lets the UI reserve space / show an image frame without null-checking a string in XAML.</summary>
+    public bool HasPhoto => !string.IsNullOrEmpty(PhotoUrl);
 }
 
 public class CreateTreatmentPlanEntryCommentDto

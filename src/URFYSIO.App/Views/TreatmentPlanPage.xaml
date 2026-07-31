@@ -375,7 +375,28 @@
                                                                                                     </FormattedString>
                                                                                                 </Label.FormattedText>
                                                                                             </Label>
-                                                                                            <Label Text="{Binding Text}" FontSize="12" />
+                                                                                            <!-- A photo-only comment has empty text; IsNotNullConverter
+                                                                                                 treats "" as false, so no blank line is rendered. -->
+                                                                                            <Label Text="{Binding Text}" FontSize="12"
+                                                                                                   IsVisible="{Binding Text, Converter={StaticResource IsNotNullConverter}}" />
+                                                                                            <!-- Photo attachment. Tapping opens it full-screen; the
+                                                                                                 source is a short-lived SAS URL minted on load. -->
+                                                                                            <Border IsVisible="{Binding HasPhoto}"
+                                                                                                    Margin="0,4,0,2" Padding="0"
+                                                                                                    StrokeShape="RoundRectangle 6"
+                                                                                                    Stroke="{StaticResource SurfaceBackground}"
+                                                                                                    HorizontalOptions="Start">
+                                                                                                <Image Source="{Binding PhotoUrl}"
+                                                                                                       Aspect="AspectFill"
+                                                                                                       HeightRequest="140"
+                                                                                                       WidthRequest="140">
+                                                                                                    <Image.GestureRecognizers>
+                                                                                                        <TapGestureRecognizer
+                                                                                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanEntryViewModel}}, Path=ViewPhotoCommand}"
+                                                                                                            CommandParameter="{Binding PhotoUrl}" />
+                                                                                                    </Image.GestureRecognizers>
+                                                                                                </Image>
+                                                                                            </Border>
                                                                                         </VerticalStackLayout>
                                                                                     </DataTemplate>
                                                                                 </CollectionView.ItemTemplate>
@@ -384,16 +405,49 @@
                                                                             <!-- Composer: hidden on completed plans (history is read-only). -->
                                                                             <VerticalStackLayout Spacing="2"
                                                                                                  IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=IsActiveTab}">
-                                                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                                                <!-- Staged photo preview, shown before posting so the user can
+                                                                                     confirm or remove it. -->
+                                                                                <Grid IsVisible="{Binding HasSelectedPhoto}"
+                                                                                      ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,4">
+                                                                                    <Border Grid.Column="0" Padding="0"
+                                                                                            StrokeShape="RoundRectangle 6"
+                                                                                            Stroke="{StaticResource SurfaceBackground}">
+                                                                                        <Image Source="{Binding SelectedPhotoPreview}"
+                                                                                               Aspect="AspectFill"
+                                                                                               HeightRequest="64" WidthRequest="64" />
+                                                                                    </Border>
+                                                                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                                                                        <Label Text="Photo attached" FontSize="11"
+                                                                                               TextColor="{StaticResource TextSecondary}" />
+                                                                                        <Button Text="Remove" FontSize="10"
+                                                                                                Padding="8,0" HeightRequest="28"
+                                                                                                HorizontalOptions="Start"
+                                                                                                BackgroundColor="Transparent"
+                                                                                                TextColor="{StaticResource Error}"
+                                                                                                Command="{Binding RemovePhotoCommand}" />
+                                                                                    </VerticalStackLayout>
+                                                                                </Grid>
+
+                                                                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                                                                     <Editor Grid.Column="0" Placeholder="Add a comment..."
                                                                                             Text="{Binding NewCommentText}"
                                                                                             AutoSize="TextChanges"
                                                                                             FontSize="12" />
-                                                                                    <Button Grid.Column="1" Text="Post" FontSize="11"
+                                                                                    <!-- Camera glyph: offers Take photo / Choose from gallery -->
+                                                                                    <Button Grid.Column="1" Text="📷" FontSize="14"
+                                                                                            Padding="8,0" HeightRequest="36"
+                                                                                            BackgroundColor="{StaticResource SurfaceBackground}"
+                                                                                            Command="{Binding AddPhotoCommand}"
+                                                                                            VerticalOptions="End"
+                                                                                            SemanticProperties.Description="Add a photo to this comment" />
+                                                                                    <Button Grid.Column="2" Text="Post" FontSize="11"
                                                                                             Command="{Binding AddCommentCommand}"
                                                                                             IsEnabled="{Binding CanSubmitComment}"
                                                                                             VerticalOptions="End" />
                                                                                 </Grid>
+                                                                                <ActivityIndicator IsRunning="{Binding IsPostingComment}"
+                                                                                                   IsVisible="{Binding IsPostingComment}"
+                                                                                                   HorizontalOptions="Start" />
                                                                                 <Label Text="{Binding CommentCharCountLabel}" FontSize="11"
                                                                                        HorizontalOptions="End"
                                                                                        TextColor="{StaticResource TextSecondary}">
@@ -525,7 +579,25 @@
                                                                             </FormattedString>
                                                                         </Label.FormattedText>
                                                                     </Label>
-                                                                    <Label Text="{Binding Text}" FontSize="12" />
+                                                                    <Label Text="{Binding Text}" FontSize="12"
+                                                                           IsVisible="{Binding Text, Converter={StaticResource IsNotNullConverter}}" />
+                                                                    <!-- Photo attachment (same treatment as the physio view). -->
+                                                                    <Border IsVisible="{Binding HasPhoto}"
+                                                                            Margin="0,4,0,2" Padding="0"
+                                                                            StrokeShape="RoundRectangle 6"
+                                                                            Stroke="{StaticResource SurfaceBackground}"
+                                                                            HorizontalOptions="Start">
+                                                                        <Image Source="{Binding PhotoUrl}"
+                                                                               Aspect="AspectFill"
+                                                                               HeightRequest="140"
+                                                                               WidthRequest="140">
+                                                                            <Image.GestureRecognizers>
+                                                                                <TapGestureRecognizer
+                                                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanEntryViewModel}}, Path=ViewPhotoCommand}"
+                                                                                    CommandParameter="{Binding PhotoUrl}" />
+                                                                            </Image.GestureRecognizers>
+                                                                        </Image>
+                                                                    </Border>
                                                                 </VerticalStackLayout>
                                                             </DataTemplate>
                                                         </CollectionView.ItemTemplate>
@@ -536,16 +608,47 @@
                                                          was BUG 7. Same structure as the physio composer now. -->
                                                     <VerticalStackLayout Spacing="2"
                                                                          IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:TreatmentPlanViewModel}}, Path=IsActiveTab}">
-                                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                        <!-- Staged photo preview before posting. -->
+                                                        <Grid IsVisible="{Binding HasSelectedPhoto}"
+                                                              ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,4">
+                                                            <Border Grid.Column="0" Padding="0"
+                                                                    StrokeShape="RoundRectangle 6"
+                                                                    Stroke="{StaticResource SurfaceBackground}">
+                                                                <Image Source="{Binding SelectedPhotoPreview}"
+                                                                       Aspect="AspectFill"
+                                                                       HeightRequest="64" WidthRequest="64" />
+                                                            </Border>
+                                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                                                <Label Text="Photo attached" FontSize="11"
+                                                                       TextColor="{StaticResource TextSecondary}" />
+                                                                <Button Text="Remove" FontSize="10"
+                                                                        Padding="8,0" HeightRequest="28"
+                                                                        HorizontalOptions="Start"
+                                                                        BackgroundColor="Transparent"
+                                                                        TextColor="{StaticResource Error}"
+                                                                        Command="{Binding RemovePhotoCommand}" />
+                                                            </VerticalStackLayout>
+                                                        </Grid>
+
+                                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                                             <Editor Grid.Column="0" Placeholder="Add a comment..."
                                                                     Text="{Binding NewCommentText}"
                                                                     AutoSize="TextChanges"
                                                                     FontSize="12" />
-                                                            <Button Grid.Column="1" Text="Post" FontSize="11"
+                                                            <Button Grid.Column="1" Text="📷" FontSize="14"
+                                                                    Padding="8,0" HeightRequest="36"
+                                                                    BackgroundColor="{StaticResource SurfaceBackground}"
+                                                                    Command="{Binding AddPhotoCommand}"
+                                                                    VerticalOptions="End"
+                                                                    SemanticProperties.Description="Add a photo to this comment" />
+                                                            <Button Grid.Column="2" Text="Post" FontSize="11"
                                                                     Command="{Binding AddCommentCommand}"
                                                                     IsEnabled="{Binding CanSubmitComment}"
                                                                     VerticalOptions="End" />
                                                         </Grid>
+                                                        <ActivityIndicator IsRunning="{Binding IsPostingComment}"
+                                                                           IsVisible="{Binding IsPostingComment}"
+                                                                           HorizontalOptions="Start" />
                                                         <Label Text="{Binding CommentCharCountLabel}" FontSize="11"
                                                                HorizontalOptions="End"
                                                                TextColor="{StaticResource TextSecondary}">

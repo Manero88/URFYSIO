@@ -10,6 +10,7 @@ using URFYSIO.Core.Exceptions;
 using URFYSIO.Core.Interfaces;
 using URFYSIO.Infrastructure.Data;
 using URFYSIO.Infrastructure.Services;
+using URFYSIO.Tests.Photos;
 
 namespace URFYSIO.Tests.Services;
 
@@ -27,10 +28,22 @@ public class UserDeletionServiceTests
 
     private static (UserDeletionService Service, Mock<IAuth0ManagementService> Auth0) CreateService(AppDbContext db)
     {
+        var (service, auth0, _) = CreateServiceWithBlobs(db);
+        return (service, auth0);
+    }
+
+    /// <summary>
+    /// Same service, but also handing back the blob double — GDPR erasure has to remove
+    /// treatment photos as well as rows, so some tests need to assert on storage.
+    /// </summary>
+    private static (UserDeletionService Service, Mock<IAuth0ManagementService> Auth0, FakeBlobStorageService Blobs)
+        CreateServiceWithBlobs(AppDbContext db)
+    {
         var auth0 = new Mock<IAuth0ManagementService>();
         auth0.Setup(a => a.DeleteUserAsync(It.IsAny<string>())).ReturnsAsync(true);
-        var service = new UserDeletionService(db, auth0.Object, Mock.Of<ILogger<UserDeletionService>>());
-        return (service, auth0);
+        var blobs = new FakeBlobStorageService();
+        var service = new UserDeletionService(db, auth0.Object, blobs, Mock.Of<ILogger<UserDeletionService>>());
+        return (service, auth0, blobs);
     }
 
     [Fact]
@@ -217,5 +230,82 @@ public class UserDeletionServiceTests
 
         Assert.IsType<OkObjectResult>(result);
         deletion.Verify(d => d.DeleteUserPermanentlyAsync(targetId), Times.Once);
+    }
+
+    // ===== GDPR erasure covers treatment photos, not just rows =====
+
+    [Fact]
+    public async Task DeleteUserPermanentlyAsync_DeletesPhotosAttachedToTheirComments()
+    {
+        using var db = GetDbContext();
+        var (service, _, blobs) = CreateServiceWithBlobs(db);
+
+        var physioUser = new User { Id = Guid.NewGuid(), FirstName = "P", LastName = "T", Email = "p@t.com", PasswordHash = "", Role = UserRole.Physiotherapist };
+        var physio = new PhysiotherapistProfile { Id = Guid.NewGuid(), UserId = physioUser.Id };
+        var clientUser = new User { Id = Guid.NewGuid(), Auth0Id = "auth0|client", FirstName = "C", LastName = "L", Email = "c@l.com", PasswordHash = "", Role = UserRole.Client };
+        var client = new ClientProfile { Id = Guid.NewGuid(), UserId = clientUser.Id };
+        db.Users.AddRange(physioUser, clientUser);
+        db.PhysiotherapistProfiles.Add(physio);
+        db.ClientProfiles.Add(client);
+
+        var plan = new TreatmentPlan { Id = Guid.NewGuid(), ClientProfileId = client.Id, PhysiotherapistProfileId = physio.Id, Title = "Plan" };
+        var entry = new TreatmentPlanEntry { Id = Guid.NewGuid(), TreatmentPlanId = plan.Id, Title = "Entry" };
+        db.TreatmentPlans.Add(plan);
+        db.TreatmentPlanEntries.Add(entry);
+
+        // A photo the departing client posted, and one the physio posted on the same plan.
+        db.TreatmentPlanEntryComments.AddRange(
+            new TreatmentPlanEntryComment
+            {
+                Id = Guid.NewGuid(), TreatmentPlanEntryId = entry.Id, UserId = clientUser.Id,
+                Text = "mine", PhotoBlobName = "client-photo.jpg"
+            },
+            new TreatmentPlanEntryComment
+            {
+                Id = Guid.NewGuid(), TreatmentPlanEntryId = entry.Id, UserId = physioUser.Id,
+                Text = "theirs", PhotoBlobName = "physio-photo.jpg"
+            });
+        await db.SaveChangesAsync();
+
+        await service.DeleteUserPermanentlyAsync(clientUser.Id);
+
+        // Both comment rows go (the whole plan is erased), so both photos must go with them
+        // — a photo left in storage after an erasure request is still retained personal data.
+        Assert.Contains("client-photo.jpg", blobs.Deleted);
+        Assert.Contains("physio-photo.jpg", blobs.Deleted);
+    }
+
+    [Fact]
+    public async Task DeleteUserPermanentlyAsync_StillErasesLocalDataWhenPhotoDeletionFails()
+    {
+        using var db = GetDbContext();
+        var (service, _, blobs) = CreateServiceWithBlobs(db);
+        blobs.DeleteException = new InvalidOperationException("storage unavailable");
+
+        var clientUser = new User { Id = Guid.NewGuid(), Auth0Id = "auth0|c", FirstName = "C", LastName = "L", Email = "c@l.com", PasswordHash = "", Role = UserRole.Client };
+        var client = new ClientProfile { Id = Guid.NewGuid(), UserId = clientUser.Id };
+        var physioUser = new User { Id = Guid.NewGuid(), FirstName = "P", LastName = "T", Email = "p2@t.com", PasswordHash = "", Role = UserRole.Physiotherapist };
+        var physio = new PhysiotherapistProfile { Id = Guid.NewGuid(), UserId = physioUser.Id };
+        db.Users.AddRange(clientUser, physioUser);
+        db.ClientProfiles.Add(client);
+        db.PhysiotherapistProfiles.Add(physio);
+
+        var plan = new TreatmentPlan { Id = Guid.NewGuid(), ClientProfileId = client.Id, PhysiotherapistProfileId = physio.Id, Title = "Plan" };
+        var entry = new TreatmentPlanEntry { Id = Guid.NewGuid(), TreatmentPlanId = plan.Id, Title = "Entry" };
+        db.TreatmentPlans.Add(plan);
+        db.TreatmentPlanEntries.Add(entry);
+        db.TreatmentPlanEntryComments.Add(new TreatmentPlanEntryComment
+        {
+            Id = Guid.NewGuid(), TreatmentPlanEntryId = entry.Id, UserId = clientUser.Id,
+            Text = "x", PhotoBlobName = "unreachable.jpg"
+        });
+        await db.SaveChangesAsync();
+
+        // Storage being down must not abort an erasure that already committed — the
+        // failure is logged for manual cleanup instead.
+        await service.DeleteUserPermanentlyAsync(clientUser.Id);
+
+        Assert.Empty(await db.Users.Where(u => u.Id == clientUser.Id).ToListAsync());
+        Assert.Empty(await db.TreatmentPlanEntryComments.ToListAsync());
     }
 }

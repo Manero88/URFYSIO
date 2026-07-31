@@ -56,7 +56,12 @@ public interface IApiService
     Task<TreatmentPlanDto?> CompleteTreatmentPlanAsync(Guid id);
     Task<TreatmentPlanDto?> ReopenTreatmentPlanAsync(Guid id);
     Task<List<TreatmentPlanEntryCommentDto>> GetEntryCommentsAsync(Guid entryId);
-    Task<(TreatmentPlanEntryCommentDto? Comment, string? Error)> AddEntryCommentAsync(Guid entryId, string text);
+    /// <summary>
+    /// Posts a comment with an optional photo attachment (multipart). Pass
+    /// <paramref name="photoStream"/> as null for a plain text comment.
+    /// </summary>
+    Task<(TreatmentPlanEntryCommentDto? Comment, string? Error)> AddEntryCommentAsync(
+        Guid entryId, string text, Stream? photoStream = null, string? photoContentType = null);
 
     // Registration
     Task<(bool Success, string? Error)> SubmitRegistrationAsync(CreateRegistrationRequestDto dto);

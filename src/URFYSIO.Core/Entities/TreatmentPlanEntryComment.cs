@@ -17,6 +17,16 @@ public class TreatmentPlanEntryComment
     public Guid TreatmentPlanEntryId { get; set; }
     public Guid UserId { get; set; }
     public string Text { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Name of the attached photo's blob in the private "treatment-photos" container,
+    /// or null when the comment has no photo. Deliberately NOT a URL: the container is
+    /// private, so a viewable link is a short-lived SAS minted per read
+    /// (<see cref="Interfaces.IBlobStorageService.GetPhotoSasUrlAsync"/>). Storing a URL
+    /// would either be permanently valid or expire in the database.
+    /// </summary>
+    public string? PhotoBlobName { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties

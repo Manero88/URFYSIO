@@ -36,15 +36,18 @@ public class UserDeletionService : IUserDeletionService
 {
     private readonly AppDbContext _db;
     private readonly IAuth0ManagementService _auth0;
+    private readonly IBlobStorageService _blobStorage;
     private readonly ILogger<UserDeletionService> _logger;
 
     public UserDeletionService(
         AppDbContext db,
         IAuth0ManagementService auth0,
+        IBlobStorageService blobStorage,
         ILogger<UserDeletionService> logger)
     {
         _db = db;
         _auth0 = auth0;
+        _blobStorage = blobStorage;
         _logger = logger;
     }
 
@@ -89,10 +92,17 @@ public class UserDeletionService : IUserDeletionService
 
         // ---- Delete related data in FK-safe order, then the user ----
 
+        // Photos attached to any comment we are about to remove. Collected as we go and
+        // deleted from blob storage after the DB commit — a GDPR erasure that left the
+        // patient's photos sitting in storage would not be an erasure at all.
+        var photoBlobNames = new List<string>();
+
         // 1. Comments authored by this user (User→Comment FK is Restrict).
         var authoredComments = await _db.TreatmentPlanEntryComments
             .Where(c => c.UserId == userId)
             .ToListAsync();
+        photoBlobNames.AddRange(
+            authoredComments.Where(c => !string.IsNullOrEmpty(c.PhotoBlobName)).Select(c => c.PhotoBlobName!));
         _db.TreatmentPlanEntryComments.RemoveRange(authoredComments);
 
         // 2. Audit FK: null out this user from any registration requests they processed.
@@ -106,7 +116,7 @@ public class UserDeletionService : IUserDeletionService
         if (user.ClientProfile is not null)
         {
             var clientProfileId = user.ClientProfile.Id;
-            await DeletePlansAsync(t => t.ClientProfileId == clientProfileId);
+            await DeletePlansAsync(t => t.ClientProfileId == clientProfileId, photoBlobNames);
 
             var clientAppointments = await _db.Appointments
                 .Where(a => a.ClientProfileId == clientProfileId)
@@ -118,7 +128,7 @@ public class UserDeletionService : IUserDeletionService
         if (user.PhysiotherapistProfile is not null)
         {
             var physioProfileId = user.PhysiotherapistProfile.Id;
-            await DeletePlansAsync(t => t.PhysiotherapistProfileId == physioProfileId);
+            await DeletePlansAsync(t => t.PhysiotherapistProfileId == physioProfileId, photoBlobNames);
 
             var physioAppointments = await _db.Appointments
                 .Where(a => a.PhysiotherapistProfileId == physioProfileId)
@@ -145,7 +155,25 @@ public class UserDeletionService : IUserDeletionService
 
         await _db.SaveChangesAsync();
 
-        // 7. Auth0 erasure — local data is already gone (see class remarks for the
+        // 7. Photo erasure. Same ordering rationale as Auth0 below: the database rows are
+        //    already gone, so a storage hiccup must not fail the erasure — it is logged
+        //    loudly instead, naming the blobs so they can be removed by hand.
+        foreach (var blobName in photoBlobNames.Distinct())
+        {
+            try
+            {
+                await _blobStorage.DeletePhotoAsync(blobName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Local data for user {UserId} was deleted, but treatment photo {BlobName} " +
+                    "could not be removed from blob storage. Manual cleanup is required.",
+                    userId, blobName);
+            }
+        }
+
+        // 8. Auth0 erasure — local data is already gone (see class remarks for the
         //    ordering rationale). A failure here is logged, not thrown.
         if (!string.IsNullOrEmpty(auth0Id))
         {
@@ -162,7 +190,8 @@ public class UserDeletionService : IUserDeletionService
     // the entries' comments. We remove them explicitly (rather than relying on DB
     // cascade) so the behaviour is identical under the EF in-memory provider used by
     // unit tests and under SQL Server in production.
-    private async Task DeletePlansAsync(Expression<Func<TreatmentPlan, bool>> predicate)
+    private async Task DeletePlansAsync(
+        Expression<Func<TreatmentPlan, bool>> predicate, List<string> photoBlobNames)
     {
         var plans = await _db.TreatmentPlans
             .Where(predicate)
@@ -173,7 +202,12 @@ public class UserDeletionService : IUserDeletionService
         foreach (var plan in plans)
         {
             foreach (var entry in plan.Entries)
+            {
+                photoBlobNames.AddRange(entry.Comments
+                    .Where(c => !string.IsNullOrEmpty(c.PhotoBlobName))
+                    .Select(c => c.PhotoBlobName!));
                 _db.TreatmentPlanEntryComments.RemoveRange(entry.Comments);
+            }
             _db.TreatmentPlanEntries.RemoveRange(plan.Entries);
         }
         _db.TreatmentPlans.RemoveRange(plans);

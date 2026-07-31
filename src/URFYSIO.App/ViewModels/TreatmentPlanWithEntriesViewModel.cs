@@ -32,12 +32,13 @@ public class TreatmentPlanWithEntriesViewModel
 
     public List<TreatmentPlanEntryViewModel> Entries { get; }
 
-    public TreatmentPlanWithEntriesViewModel(TreatmentPlanDto dto, IApiService api)
+    public TreatmentPlanWithEntriesViewModel(
+        TreatmentPlanDto dto, IApiService api, IPhotoPickerService photoPicker)
     {
         Dto = dto;
         Entries = dto.Entries
             .OrderBy(e => e.OrderIndex)
-            .Select(e => new TreatmentPlanEntryViewModel(e, api))
+            .Select(e => new TreatmentPlanEntryViewModel(e, api, photoPicker))
             .ToList();
     }
 }

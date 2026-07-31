@@ -30,6 +30,8 @@ public partial class TreatmentPlanViewModel : BaseViewModel
 {
     private readonly IApiService _apiService;
     private readonly IAuthService _authService;
+    // Passed down to each entry's comment composer so it can attach photos.
+    private readonly IPhotoPickerService _photoPicker;
 
     // Source of truth — all plans returned by the API for the current user. We
     // never mutate this collection from XAML; it feeds the visible collections
@@ -154,10 +156,12 @@ public partial class TreatmentPlanViewModel : BaseViewModel
     // ClientGroups.Count automatically.
     public bool HasNoGroupedPlans => IsPhysioOrAdmin && ClientGroups.Count == 0;
 
-    public TreatmentPlanViewModel(IApiService apiService, IAuthService authService)
+    public TreatmentPlanViewModel(
+        IApiService apiService, IAuthService authService, IPhotoPickerService photoPicker)
     {
         _apiService = apiService;
         _authService = authService;
+        _photoPicker = photoPicker;
         Title = "Treatment Plans";
         ClientGroups.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasNoGroupedPlans));
     }
@@ -247,7 +251,7 @@ public partial class TreatmentPlanViewModel : BaseViewModel
         }
 
         foreach (var p in list)
-            _allPlans.Add(new TreatmentPlanWithEntriesViewModel(p, _apiService));
+            _allPlans.Add(new TreatmentPlanWithEntriesViewModel(p, _apiService, _photoPicker));
 
         RebuildVisibleCollections();
     }

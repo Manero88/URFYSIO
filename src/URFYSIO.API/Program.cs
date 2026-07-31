@@ -40,6 +40,10 @@ builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
 builder.Services.AddScoped<ITreatmentPlanService, TreatmentPlanService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IAuth0ManagementService, Auth0ManagementService>();
+// Photo attachments on treatment-plan comments. The service initialises its Azure client
+// lazily, so a missing Storage:ConnectionString degrades to "photos don't work" rather
+// than taking the whole API down at startup.
+builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 
 // ---- HttpClient factory (for Auth0 Management API) ----
 builder.Services.AddHttpClient();
